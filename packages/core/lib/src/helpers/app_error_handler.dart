@@ -31,10 +31,15 @@ class AppErrorHandler {
 
     // 4. Si el error ya es una cadena de texto
     if (error is String) {
-      if (error.trim().isEmpty) {
+      final trimmed = error.trim();
+      if (trimmed.isEmpty) {
         return 'Ocurrió un error inesperado.';
       }
-      return FirebaseErrors.mapMessage(error);
+      // Si la cadena ya es una oración en español (contiene espacios o puntuación), retornarla directamente
+      if (trimmed.contains(' ') || !trimmed.contains('-')) {
+        return trimmed;
+      }
+      return FirebaseErrors.mapMessage(trimmed);
     }
 
     // 5. Excepciones genéricas que implementan toString

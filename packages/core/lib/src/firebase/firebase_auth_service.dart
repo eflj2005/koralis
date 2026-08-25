@@ -3,17 +3,30 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'firebase_errors.dart';
 
 /// Servicio genérico desacoplado para la gestión de Autenticación con Firebase.
+///
+/// Soporta múltiples proveedores de autenticación:
+/// - Correo electrónico y contraseña (siempre disponible).
+/// - Google Sign-In (opcional: se habilita inyectando una instancia de [GoogleSignIn]).
+///
+/// Si [googleSignIn] es `null`, los métodos de Google lanzarán [UnsupportedError].
 class FirebaseAuthService {
   final FirebaseAuth _auth;
-  final GoogleSignIn _googleSignIn;
 
-  /// Constructor que permite inyectar instancias de [FirebaseAuth] y [GoogleSignIn].
-  /// Si no se proveen, se utilizan las instancias singleton por defecto.
+  /// Instancia de GoogleSignIn. Si es `null`, el proveedor Google está deshabilitado.
+  final GoogleSignIn? _googleSignIn;
+
+  /// Indica si el proveedor de Google Sign-In está habilitado en este servicio.
+  bool get googleSignInEnabled => _googleSignIn != null;
+
+  /// Constructor que permite inyectar instancias de [FirebaseAuth] y opcionalmente [GoogleSignIn].
+  ///
+  /// - Para usar **solo correo**, omitir o pasar `null` en [googleSignIn].
+  /// - Para habilitar **Google Sign-In**, pasar una instancia configurada de [GoogleSignIn].
   FirebaseAuthService({
     FirebaseAuth? auth,
     GoogleSignIn? googleSignIn,
   })  : _auth = auth ?? FirebaseAuth.instance,
-        _googleSignIn = googleSignIn ?? GoogleSignIn(scopes: ['email']);
+        _googleSignIn = googleSignIn;
 
   /// Obtiene el usuario actualmente autenticado o `null` si no hay sesión activa.
   User? get currentUser => _auth.currentUser;
@@ -31,8 +44,12 @@ class FirebaseAuthService {
   /// Indica si existe una sesión activa válida.
   bool get isAuthenticated => _auth.currentUser != null;
 
+  // ---------------------------------------------------------------------------
+  // Autenticación por Correo y Contraseña
+  // ---------------------------------------------------------------------------
+
   /// Registra un nuevo usuario utilizando correo electrónico y contraseña.
-  /// 
+  ///
   /// Retorna el UID del nuevo usuario si el registro es exitoso.
   /// Lanza una excepción con un código/mensaje procesado en caso de falla.
   Future<String?> signUpWithEmail({
@@ -53,7 +70,7 @@ class FirebaseAuthService {
   }
 
   /// Inicia sesión con correo electrónico y contraseña.
-  /// 
+  ///
   /// Retorna el UID del usuario autenticado.
   Future<String?> signInWithEmail({
     required String email,
@@ -72,11 +89,23 @@ class FirebaseAuthService {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Autenticación con Google Sign-In (Opcional)
+  // ---------------------------------------------------------------------------
+
   /// Inicia sesión utilizando credenciales de Google.
-  /// 
+  ///
   /// Retorna el UID del usuario si la autenticación por Google se completa,
   /// o `null` si el usuario cancela la selección de cuenta.
+  ///
+  /// Lanza [UnsupportedError] si Google Sign-In no fue habilitado al construir el servicio.
   Future<String?> signInWithGoogle() async {
+    if (_googleSignIn == null) {
+      throw UnsupportedError(
+        'Google Sign-In no está habilitado en este proyecto. '
+        'Inyecta una instancia de GoogleSignIn al crear FirebaseAuthService.',
+      );
+    }
     try {
       // Forzar cierre de sesión previo en GoogleSignIn para permitir selección de cuenta
       await _googleSignIn.signOut();
@@ -105,6 +134,10 @@ class FirebaseAuthService {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Métodos Comunes
+  // ---------------------------------------------------------------------------
+
   /// Envía un correo electrónico de recuperación de contraseña al correo especificado.
   Future<void> sendPasswordResetEmail(String email) async {
     try {
@@ -116,13 +149,15 @@ class FirebaseAuthService {
     }
   }
 
-  /// Cierra la sesión activa del usuario tanto en Firebase Auth como en Google Sign-In.
+  /// Cierra la sesión activa del usuario.
+  /// Si Google Sign-In está habilitado, también cierra la sesión de Google.
   Future<void> signOut() async {
     try {
-      await Future.wait([
-        _auth.signOut(),
-        _googleSignIn.signOut(),
-      ]);
+      final futures = <Future>[_auth.signOut()];
+      if (_googleSignIn != null) {
+        futures.add(_googleSignIn.signOut());
+      }
+      await Future.wait(futures);
     } catch (e) {
       throw FirebaseErrors.getErrorMessage(e);
     }

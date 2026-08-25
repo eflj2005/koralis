@@ -12,10 +12,13 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
+  flutter_localizations:
+    sdk: flutter
   core:
     path: packages/core/
   google_fonts: ^8.1.0
   flutter_arc_text: ^0.6.0
+  firebase_core: ^4.13.0
 
 dev_dependencies:
   flutter_test:

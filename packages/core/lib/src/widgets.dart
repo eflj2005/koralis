@@ -114,6 +114,12 @@ class AppTextField extends StatefulWidget {
   /// Tipo de teclado a mostrar (por defecto: texto).
   final TextInputType tipoTeclado;
 
+  /// Relleno interno del campo. Si es null, usa un padding compacto por defecto.
+  final EdgeInsetsGeometry? contentPadding;
+
+  /// Control de mayúsculas automáticas del texto.
+  final TextCapitalization textCapitalization;
+
   const AppTextField({
     super.key,
     this.label,
@@ -123,6 +129,8 @@ class AppTextField extends StatefulWidget {
     this.icono,
     this.esOscuro = false,
     this.tipoTeclado = TextInputType.text,
+    this.contentPadding,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   @override
@@ -149,28 +157,72 @@ class _AppTextFieldState extends State<AppTextField> {
 
   @override
   Widget build(BuildContext context) {
+    const List<String> fuentesRespaldo = [
+      'Roboto',
+      'Noto Sans',
+      'Segoe UI',
+      'Arial',
+      'sans-serif',
+    ];
+
+    final theme = Theme.of(context);
+
     return TextFormField(
       controller: widget.controller,
       obscureText: _textoOculto,
       keyboardType: widget.tipoTeclado,
+      textCapitalization: widget.textCapitalization,
       validator: widget.validator,
+      style: TextStyle(
+        color: theme.colorScheme.onSurface,
+        fontFamilyFallback: fuentesRespaldo,
+      ),
       decoration: InputDecoration(
+        isDense: true,
+        contentPadding: widget.contentPadding ??
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         labelText: widget.label,
+        labelStyle: const TextStyle(
+          fontFamilyFallback: fuentesRespaldo,
+        ),
         hintText: widget.hint,
+        hintStyle: TextStyle(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+          fontFamilyFallback: fuentesRespaldo,
+        ),
         border: const OutlineInputBorder(),
-        // Ícono prefijo si fue proporcionado
-        prefixIcon: widget.icono != null ? Icon(widget.icono) : null,
-        // Botón de toggle de visibilidad solo en modo contraseña
+        // Ícono prefijo compacto si fue proporcionado
+        prefixIcon: widget.icono != null
+            ? Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Icon(widget.icono, size: 22),
+              )
+            : null,
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 42,
+          minHeight: 40,
+        ),
+        // Botón de toggle de visibilidad compacto solo en modo contraseña
         suffixIcon: widget.esOscuro
             ? IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 40,
+                  minHeight: 40,
+                ),
                 icon: Icon(
                   _textoOculto
                       ? Icons.visibility_outlined
                       : Icons.visibility_off_outlined,
+                  size: 22,
                 ),
                 onPressed: _toggleVisibilidad,
               )
             : null,
+        suffixIconConstraints: const BoxConstraints(
+          minWidth: 40,
+          minHeight: 40,
+        ),
       ),
     );
   }
@@ -181,25 +233,43 @@ class _AppTextFieldState extends State<AppTextField> {
 // ---------------------------------------------------------------------------
 
 /// Widget de carga que muestra un overlay semitransparente con un
-/// [CircularProgressIndicator] y el GIF del perrito corriendo en el centro.
-/// Usa los colores secundarios del tema activo.
-/// Flutter anima los GIFs de forma nativa con [Image.asset], por lo que
-/// no se requieren controladores de animación adicionales.
+/// [CircularProgressIndicator] y la imagen del spinner configurada en el centro.
+/// El color de fondo y la opacidad pueden configurarse globalmente en el tema
+/// o pasarse como parámetros en el constructor.
 ///
 /// Ejemplo de uso:
 /// ```dart
 /// if (_cargando) const LoadingWidget(),
 /// ```
 class AppSpinner extends StatelessWidget {
+  /// Tamaño general del spinner (ancho y alto).
   final double size;
 
-  const AppSpinner({super.key, this.size = 120});
+  /// Color de fondo personalizado (opcional, sobrescribe la configuración del tema).
+  final Color? backgroundColor;
+
+  /// Opacidad de fondo personalizada de 0.0 a 1.0 (opcional, sobrescribe la configuración del tema).
+  final double? backgroundOpacity;
+
+  const AppSpinner({
+    super.key,
+    this.size = 120,
+    this.backgroundColor,
+    this.backgroundOpacity,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final colorSecundario = colorScheme.secondary;
     final colorPrimario = colorScheme.primary;
+    final coreTheme = Theme.of(context).extension<CoreThemeExtension>();
+
+    // Obtener color base de fondo y nivel de opacidad (con valores de respaldo por defecto)
+    final colorBaseFondo =
+        backgroundColor ?? coreTheme?.spinnerBackgroundColor ?? colorSecundario;
+    final opacidadFondo =
+        backgroundOpacity ?? coreTheme?.spinnerBackgroundOpacity ?? 0.80;
 
     return SizedBox(
       width: size,
@@ -211,7 +281,7 @@ class AppSpinner extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: colorSecundario.withValues(alpha: 0.80),
+                color: colorBaseFondo.withValues(alpha: opacidadFondo),
               ),
             ),
           ),
@@ -223,9 +293,9 @@ class AppSpinner extends StatelessWidget {
               strokeCap: StrokeCap.round,
             ),
           ),
-          if (Theme.of(context).extension<CoreThemeExtension>()?.spinnerImagePath != null)
+          if (coreTheme?.spinnerImagePath != null)
             Image.asset(
-              Theme.of(context).extension<CoreThemeExtension>()!.spinnerImagePath!,
+              coreTheme!.spinnerImagePath!,
               width: size * 0.66,
               height: size * 0.66,
               fit: BoxFit.contain,
@@ -393,85 +463,169 @@ class AppMenuButton extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// showUnderConstructionDialog
+// AppModalBottomSheet (Widget genérico para emergentes / modales)
 // ---------------------------------------------------------------------------
 
-/// Muestra un modal estilizado (bottom sheet) indicando que la función está en construcción.
-void showUnderConstructionDialog(BuildContext context,
-    {required String accion}) {
-  showModalBottomSheet(
+/// Contenedor base reutilizable para cualquier ventana emergente (modal / bottom sheet).
+///
+/// Ofrece:
+/// - Bordes redondeados y sombra estilizada.
+/// - Indicador de arrastre superior (drag handle).
+/// - Ajuste automático de margen y padding para teclado virtual ([MediaQueryData.viewInsets]).
+/// - Límite de altura máxima responsivo con soporte para desplazamiento.
+class AppModalBottomSheet extends StatelessWidget {
+  /// Widget con el contenido a mostrar dentro del emergente.
+  final Widget child;
+
+  /// Indica si se debe mostrar el indicador de arrastre superior.
+  final bool mostrarIndicador;
+
+  /// Margen exterior del contenedor flotante.
+  final EdgeInsetsGeometry? margin;
+
+  /// Relleno interno del contenedor.
+  final EdgeInsetsGeometry? padding;
+
+  /// Altura máxima relativa respecto a la pantalla (por defecto: 90%).
+  final double maxHeightFactor;
+
+  /// Color de fondo personalizado del modal (opcional; por defecto usa el fondo del tema).
+  final Color? backgroundColor;
+
+  const AppModalBottomSheet({
+    super.key,
+    required this.child,
+    this.mostrarIndicador = true,
+    this.margin,
+    this.padding,
+    this.maxHeightFactor = 0.90,
+    this.backgroundColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final mediaQuery = MediaQuery.of(context);
+    final insetsBottom = mediaQuery.viewInsets.bottom;
+    final maxHeight = mediaQuery.size.height * maxHeightFactor;
+
+    return Padding(
+      // Evita superponerse con el teclado virtual
+      padding: EdgeInsets.only(bottom: insetsBottom),
+      child: Container(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        margin: margin ?? const EdgeInsets.all(16),
+        padding: padding ?? const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: backgroundColor ?? theme.scaffoldBackgroundColor,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 20,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (mostrarIndicador) ...[
+                Center(
+                  child: Container(
+                    width: 48,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Función helper genérica para desplegar cualquier emergente estilizado en la aplicación.
+Future<T?> showAppModalBottomSheet<T>(
+  BuildContext context, {
+  required Widget child,
+  bool isDismissible = true,
+  bool enableDrag = true,
+  bool mostrarIndicador = true,
+  EdgeInsetsGeometry? margin,
+  EdgeInsetsGeometry? padding,
+  double maxHeightFactor = 0.90,
+  Color? backgroundColor,
+}) {
+  return showModalBottomSheet<T>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (context) {
-      final theme = Theme.of(context);
-      return Container(
-        padding: const EdgeInsets.all(24),
-        margin: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black26,
-              blurRadius: 20,
-              offset: Offset(0, 4),
-            )
-          ],
+    isDismissible: isDismissible,
+    enableDrag: enableDrag,
+    builder: (context) => AppModalBottomSheet(
+      mostrarIndicador: mostrarIndicador,
+      margin: margin,
+      padding: padding,
+      maxHeightFactor: maxHeightFactor,
+      backgroundColor: backgroundColor,
+      child: child,
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// showUnderConstructionDialog (Refactorizado con base en AppModalBottomSheet)
+// ---------------------------------------------------------------------------
+
+/// Muestra un modal estilizado indicando que la función se encuentra en construcción.
+/// Implementado sobre el componente genérico [showAppModalBottomSheet].
+void showUnderConstructionDialog(
+  BuildContext context, {
+  required String accion,
+}) {
+  final theme = Theme.of(context);
+
+  showAppModalBottomSheet(
+    context,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.construction_rounded,
+          size: 64,
+          color: theme.colorScheme.secondary,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 48,
-              height: 6,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Icon(
-              Icons.construction_rounded,
-              size: 64,
-              color: theme.colorScheme.secondary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'En construcción',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Próximamente -> $accion',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
-                  foregroundColor: theme.colorScheme.onPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: const Text('Entendido',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
+        const SizedBox(height: 16),
+        Text(
+          'En construcción',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
         ),
-      );
-    },
+        const SizedBox(height: 8),
+        Text(
+          'Próximamente -> $accion',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 24),
+        AppButton(
+          texto: 'Entendido',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+    ),
   );
 }

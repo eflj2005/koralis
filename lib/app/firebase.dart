@@ -1,74 +1,23 @@
 import 'package:core/core.dart';
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
-
-/// Opciones de configuración predeterminadas de Firebase para el proyecto Koralis.
-/// 
-/// Contiene las llaves de acceso y parámetros de conexión específicos por plataforma.
-class DefaultFirebaseOptions {
-  /// Retorna las opciones de Firebase según la plataforma de ejecución actual.
-  static FirebaseOptions get currentPlatform {
-    if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions no se ha configurado para la plataforma Web.',
-      );
-    }
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.android:
-        return android;
-      case TargetPlatform.iOS:
-        return ios;
-      case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions no se ha configurado para macOS.',
-        );
-      case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions no se ha configurado para Windows.',
-        );
-      case TargetPlatform.linux:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions no se ha configurado para Linux.',
-        );
-      default:
-        throw UnsupportedError(
-          'Plataforma no soportada para FirebaseOptions.',
-        );
-    }
-  }
-
-  /// Llaves y parámetros de conexión para la plataforma Android.
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDm1yioCwLDLWrjHyaZf0Wp5FPXmJnzcyY',
-    appId: '1:504734441226:android:ea3c92b0f9ab2aa1b0e4f3',
-    messagingSenderId: '504734441226',
-    projectId: 'packandgo-c47fd',
-    storageBucket: 'packandgo-c47fd.firebasestorage.app',
-  );
-
-  /// Llaves y parámetros de conexión para la plataforma iOS.
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBDbVhK5W2ST2o_R32_Fsrig-TmbicLMv0',
-    appId: '1:504734441226:ios:a5f0741390a1fe05b0e4f3',
-    messagingSenderId: '504734441226',
-    projectId: 'packandgo-c47fd',
-    storageBucket: 'packandgo-c47fd.firebasestorage.app',
-    iosClientId:
-        '504734441226-5olef9cgjm32b54ldnf1381pqahi0l1h.apps.googleusercontent.com',
-    iosBundleId: 'com.edwinacubillos.testApp3',
-  );
-}
+import '../firebase_options.dart';
+import 'firebase_auth_config.dart';
+import 'firebase_firestore_config.dart';
+import 'firebase_storage_config.dart';
 
 /// Gestor centralizado e inicializador de Firebase específico para la aplicación Koralis.
-/// 
+///
 /// Abstrae y expone los servicios genéricos independientes provenientes del paquete [core].
+/// Cada servicio es construido e instanciado a través de su respectivo archivo de configuración:
+/// - Autenticación → [FirebaseAuthConfig]
+/// - Base de datos  → [FirebaseFirestoreConfig]
+/// - Almacenamiento → [FirebaseStorageConfig]
 class AppFirebase {
   static final AppFirebase _instance = AppFirebase._internal();
 
-  /// Instancias únicas de los 3 servicios de Firebase provistos por el paquete core.
-  late final FirebaseAuthService auth;
-  late final FirestoreService firestore;
-  late final FirebaseStorageService storage;
+  /// Instancias internas de los servicios de Firebase
+  FirebaseAuthService? _auth;
+  FirestoreService? _firestore;
+  FirebaseStorageService? _storage;
 
   bool _isInitialized = false;
 
@@ -79,16 +28,30 @@ class AppFirebase {
 
   AppFirebase._internal();
 
-  /// Inicializa la app de Firebase con las opciones del proyecto Koralis y configura los servicios.
+  /// Servicio de autenticación con inicialización segura
+  FirebaseAuthService get auth =>
+      _auth ??= FirebaseAuthConfig.buildService();
+
+  /// Servicio de Cloud Firestore con inicialización segura
+  FirestoreService get firestore =>
+      _firestore ??= FirebaseFirestoreConfig.buildService();
+
+  /// Servicio de Firebase Storage con inicialización segura
+  FirebaseStorageService get storage =>
+      _storage ??= FirebaseStorageConfig.buildService();
+
+  /// Inicializa la app de Firebase con las opciones del proyecto Koralis.
+  /// Cada servicio es construido desde su archivo de configuración individual.
   static Future<AppFirebase> initialize() async {
     if (!_instance._isInitialized) {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
 
-      _instance.auth = FirebaseAuthService();
-      _instance.firestore = FirestoreService();
-      _instance.storage = FirebaseStorageService();
+      // Construcción e inicialización explícita de los servicios
+      _instance._auth = FirebaseAuthConfig.buildService();
+      _instance._firestore = FirebaseFirestoreConfig.buildService();
+      _instance._storage = FirebaseStorageConfig.buildService();
 
       _instance._isInitialized = true;
     }

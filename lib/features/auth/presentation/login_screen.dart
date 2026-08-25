@@ -3,9 +3,9 @@ import 'package:flutter_arc_text/flutter_arc_text.dart';
 import 'package:core/core.dart';
 import '../domain/usecases/login_usecase.dart';
 import '../data/repositories/auth_repository_impl.dart';
+import 'widgets/sign_up_form_sheet.dart';
 
-/// Pantalla de inicio de sesión.
-/// Solo contiene estructura visual, sin lógica de autenticación funcional.
+/// Pantalla de inicio de sesión de la aplicación Koralis.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -19,7 +19,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    // Instancia manual temporal (idealmente usar Inyección de Dependencias como get_it)
     _loginUseCase = LoginUseCase(AuthRepositoryImpl());
   }
 
@@ -54,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _cargando = true);
 
     try {
-      final email = _emailController.text;
+      final email = _emailController.text.trim();
       final password = _passwordController.text;
 
       // Llamada a la capa de dominio
@@ -103,18 +102,20 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             Container(
                               margin: const EdgeInsets.only(top: 10),
-                              child: Icon(
-                                Icons.pets,
-                                size: 72,
-                                color: theme.colorScheme.primary,
+                              // Logo principal de la aplicación Koralis
+                              child: Image.asset(
+                                'images/logo.png',
+                                width: 130,
+                                height: 130,
+                                fit: BoxFit.contain,
                               ),
                             ),
                             ArcText(
-                              radius: 55,
-                              text: 'P E T   C A R E',
+                              radius: 70,
+                              text: 'K O R A L I S',
                               textStyle:
                                   theme.textTheme.titleLarge?.copyWith(
-                                    fontSize: 22,
+                                    fontSize: 35,
                                     color: theme.colorScheme.primary,
                                     fontWeight: FontWeight.bold,
                                   ) ??
@@ -137,11 +138,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Ingresa tus credenciales para continuar',
+                        'Gestión de instrumentos financieros',
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 48),
 
                       // --- Campo: Correo electrónico ---
                       AppTextField(
@@ -195,10 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const Text('¿No tienes cuenta?'),
                           TextButton(
                             onPressed: () {
-                              showUnderConstructionDialog(
-                                context,
-                                accion: 'Registro de usuario',
-                              );
+                              showSignUpModalBottomSheet(context);
                             },
                             child: const Text('Regístrate'),
                           ),

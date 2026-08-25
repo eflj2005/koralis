@@ -11,7 +11,7 @@ class CoreValidators {
     return null;
   }
 
-  /// Valida contraseña: min 6 caracteres, 1 mayúscula, 1 número
+  /// Valida contraseña: min 6 caracteres, al menos 1 mayúscula (soporta Ñ y acentos) y 1 número
   static String? password(String? value) {
     if (value == null || value.isEmpty) {
       return 'La contraseña no puede estar vacía';
@@ -19,7 +19,8 @@ class CoreValidators {
     if (value.length < 6) {
       return 'Debe tener mínimo 6 caracteres';
     }
-    if (!value.contains(RegExp(r'[A-Z]'))) {
+    // Soporte para mayúsculas en español incluyendo Ñ y tildes
+    if (!value.contains(RegExp(r'[A-ZÁÉÍÓÚÑ]'))) {
       return 'Debe contener al menos una mayúscula';
     }
     if (!value.contains(RegExp(r'[0-9]'))) {

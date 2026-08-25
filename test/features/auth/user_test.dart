@@ -3,19 +3,26 @@ import 'package:koralis_app/features/auth/domain/entities/user.dart';
 
 void main() {
   group('Auth Feature - User Entity', () {
-    test('Debe crear una instancia de User con los datos correctos', () {
+    test('Debe crear una instancia de User con los datos correctos incluyendo nacimiento', () {
       // Arrange
-      const id = 1;
+      const id = 'uid-abc-123';
       const nombre = 'Juan Perez';
-      const correo = 'juan@petcare.com';
+      const correo = 'juan@koralis.com';
+      const nacimiento = '15/08/1995';
 
       // Act
-      final user = User(id: id, nombre: nombre, correo: correo);
+      final user = User(
+        id: id,
+        nombre: nombre,
+        correo: correo,
+        nacimiento: nacimiento,
+      );
 
       // Assert
       expect(user.id, equals(id));
       expect(user.nombre, equals(nombre));
       expect(user.correo, equals(correo));
+      expect(user.nacimiento, equals(nacimiento));
     });
   });
 }

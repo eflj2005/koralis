@@ -1,4 +1,4 @@
-package com.example.petcare_app
+package com.techib.koralis
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -4,12 +4,12 @@ import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 void main() {
   group('Profile Feature - Profile Entity', () {
     test('Debe crear una instancia de Profile con los datos correctos', () {
-      // Arrange
-      const id = 1;
-      const userId = 10;
+      // Arrange: id y userId son String (IDs de Firestore y Firebase Auth)
+      const id = 'profile-doc-abc';
+      const userId = 'uid-firebase-xyz';
       const avatarPath = 'images/avatar.png';
       const nombre = 'Maria Gomez';
-      const correo = 'maria@petcare.com';
+      const correo = 'maria@koralis.com';
 
       // Act
       final profile = Profile(

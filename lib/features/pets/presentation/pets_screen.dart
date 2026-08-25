@@ -1,9 +1,18 @@
+// =============================================================================
+// ⚠️ [DEPRECATED / BORRAR] - CÓDIGO DE REFERENCIA TEMPORAL (PETCARE)
+// =============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
 import '../../pets/domain/entities/pet.dart';
 import '../../pets/domain/usecases/get_pets_usecase.dart';
 import '../../pets/data/repositories/pet_repository_impl.dart';
 
+/// Pantalla de listado de mascotas.
+/// 
+/// ⚠️ **OBSOLETO**: Mantenido temporalmente como referencia arquitectónica. Pendiente de borrar.
+// ignore: deprecated_member_use_from_same_package
+@Deprecated('Código de referencia temporal de PetCare. Será eliminado al construir Koralis.')
 class PetsScreen extends StatefulWidget {
   const PetsScreen({super.key});
 
@@ -11,13 +20,17 @@ class PetsScreen extends StatefulWidget {
   State<PetsScreen> createState() => _PetsScreenState();
 }
 
+// ignore: deprecated_member_use_from_same_package
 class _PetsScreenState extends State<PetsScreen> {
+  // ignore: deprecated_member_use_from_same_package
   late final GetPetsUseCase _getPetsUseCase;
+  // ignore: deprecated_member_use_from_same_package
   Future<List<Pet>>? _petsFuture;
 
   @override
   void initState() {
     super.initState();
+    // ignore: deprecated_member_use_from_same_package
     _getPetsUseCase = GetPetsUseCase(PetRepositoryImpl());
     _loadPets();
   }
@@ -37,6 +50,7 @@ class _PetsScreenState extends State<PetsScreen> {
         title: const Text('Mis Mascotas'),
         centerTitle: true,
       ),
+      // ignore: deprecated_member_use_from_same_package
       body: FutureBuilder<List<Pet>>(
         future: _petsFuture,
         builder: (context, snapshot) {
@@ -73,7 +87,8 @@ class _PetsScreenState extends State<PetsScreen> {
                     backgroundColor: theme.colorScheme.primaryContainer,
                     radius: 28,
                     child: Icon(
-                      IconData(pet.imagen, fontFamily: 'MaterialIcons'),
+                      // ignore: non_const_argument_for_const_parameter
+                      IconData(pet.iconoCodigo, fontFamily: 'MaterialIcons'),
                       color: theme.colorScheme.onPrimaryContainer,
                       size: 28,
                     ),

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "371881347741",
+    "project_id": "koralis-33347",
+    "storage_bucket": "koralis-33347.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371881347741:android:62fe5adeae3903e095e274",
+        "android_client_info": {
+          "package_name": "com.techib.koralis"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKa5RbTk_ehzKbQy4gApdwNZwgPgrvGt0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,20 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:koralis_app/features/auth/presentation/login_screen.dart';
+import 'package:koralis_app/features/auth/presentation/sign_up_screen.dart';
 import 'package:koralis_app/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:koralis_app/features/pets/presentation/pets_screen.dart';
 import 'package:koralis_app/features/profile/presentation/profile_screen.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 
+/// Enrutador principal de la aplicación Koralis.
+/// Gestiona la generación dinámica de rutas nombradas.
 class AppRouter {
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case '/':
         return MaterialPageRoute(builder: (_) => const LoginScreen());
+      case '/sign_up':
+        return MaterialPageRoute(builder: (_) => const SignUpScreen());
       case '/dashboard':
         final user = settings.arguments as User;
         return MaterialPageRoute(builder: (_) => DashboardScreen(user: user));
       case '/pets':
+        // ignore: deprecated_member_use_from_same_package
         return MaterialPageRoute(builder: (_) => const PetsScreen());
       case '/profile':
         final profile = settings.arguments as Profile;
