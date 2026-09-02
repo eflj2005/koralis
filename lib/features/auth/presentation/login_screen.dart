@@ -5,6 +5,7 @@ import '../domain/usecases/login_usecase.dart';
 import '../domain/usecases/resend_email_verification_usecase.dart';
 import '../data/repositories/auth_repository_impl.dart';
 import 'widgets/sign_up_form_sheet.dart';
+import 'widgets/forgot_password_form_sheet.dart';
 
 /// Pantalla de inicio de sesión de la aplicación Koralis con validación obligatoria de correo verificado.
 class LoginScreen extends StatefulWidget {
@@ -241,6 +242,80 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// Abre el modal de recuperación de contraseña y muestra confirmación al completarse
+  void _abrirModalRecuperarContrasena() async {
+    final correo = await showForgotPasswordModalBottomSheet(
+      context,
+      initialEmail: _emailController.text.trim(),
+    );
+
+    if (correo != null && mounted) {
+      _mostrarDialogoConfirmacionRecuperacion(context, correo);
+    }
+  }
+
+  /// Muestra diálogo informativo tras enviar el enlace de recuperación
+  void _mostrarDialogoConfirmacionRecuperacion(BuildContext context, String correo) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final dialogTheme = Theme.of(dialogContext);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.mark_email_read_outlined,
+                color: dialogTheme.colorScheme.primary,
+                size: 28,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Correo enviado',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Hemos enviado las instrucciones para restablecer tu contraseña a:',
+                style: dialogTheme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                correo,
+                style: dialogTheme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Revisa tu bandeja de entrada (y la carpeta de spam) y sigue el enlace para definir una nueva contraseña.',
+                style: dialogTheme.textTheme.bodyMedium?.copyWith(
+                  color: dialogTheme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Entendido'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -336,18 +411,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 12),
 
                       // --- Enlace: ¿Olvidaste tu contraseña? ---
-                      Align(
+                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () {
-                            showUnderConstructionDialog(
-                              context,
-                              accion: 'Recuperar contraseña',
-                            );
-                          },
+                          onPressed: _abrirModalRecuperarContrasena,
                           child: const Text('¿Olvidaste tu contraseña?'),
                         ),
                       ),
+
                       const SizedBox(height: 24),
 
                       // --- Botón principal: Ingresar ---

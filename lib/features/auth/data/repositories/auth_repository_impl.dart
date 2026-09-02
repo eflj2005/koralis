@@ -121,4 +121,10 @@ class AuthRepositoryImpl implements AuthRepository {
       password: contrasena,
     );
   }
+
+  @override
+  Future<void> sendPasswordResetEmail(String correo) async {
+    final correoLimpio = correo.trim();
+    await _auth.sendPasswordResetEmail(correoLimpio);
+  }
 }

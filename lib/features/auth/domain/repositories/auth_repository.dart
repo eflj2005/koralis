@@ -21,4 +21,7 @@ abstract class AuthRepository {
   /// Reenvía el correo de verificación al usuario correspondiente autenticando temporalmente
   /// con sus credenciales y cerrando la sesión tras el envío.
   Future<void> resendVerificationEmail(String correo, String contrasena);
+
+  /// Envía un correo electrónico para restablecer la contraseña al correo provisto.
+  Future<void> sendPasswordResetEmail(String correo);
 }

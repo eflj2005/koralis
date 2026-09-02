@@ -12,8 +12,6 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
-  flutter_localizations:
-    sdk: flutter
   core:
     path: packages/core/
   google_fonts: ^8.1.0
