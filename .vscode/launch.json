@@ -5,18 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "petcare_app",
+            "name": "koralis_app",
             "request": "launch",
             "type": "dart"
         },
         {
-            "name": "petcare_app (profile mode)",
+            "name": "koralis_app (profile mode)",
             "request": "launch",
             "type": "dart",
             "flutterMode": "profile"
         },
         {
-            "name": "petcare_app (release mode)",
+            "name": "koralis_app (release mode)",
             "request": "launch",
             "type": "dart",
             "flutterMode": "release"

@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_arc_text/flutter_arc_text.dart';
 import 'package:core/core.dart';
 import '../domain/usecases/login_usecase.dart';
+import '../domain/usecases/resend_email_verification_usecase.dart';
 import '../data/repositories/auth_repository_impl.dart';
 import 'widgets/sign_up_form_sheet.dart';
 
-/// Pantalla de inicio de sesión de la aplicación Koralis.
+/// Pantalla de inicio de sesión de la aplicación Koralis con validación obligatoria de correo verificado.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -14,12 +15,18 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  /// Caso de uso para inicio de sesión
   late final LoginUseCase _loginUseCase;
+
+  /// Caso de uso para reenvío de correo de confirmación
+  late final ResendEmailVerificationUseCase _resendVerificationUseCase;
 
   @override
   void initState() {
     super.initState();
-    _loginUseCase = LoginUseCase(AuthRepositoryImpl());
+    final authRepository = AuthRepositoryImpl();
+    _loginUseCase = LoginUseCase(authRepository);
+    _resendVerificationUseCase = ResendEmailVerificationUseCase(authRepository);
   }
 
   /// Controlador para el campo de correo electrónico
@@ -52,11 +59,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _cargando = true);
 
-    try {
-      final email = _emailController.text.trim();
-      final password = _passwordController.text;
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
 
-      // Llamada a la capa de dominio
+    try {
+      // Llamada a la capa de dominio (valida credenciales y estado de correo verificado)
       final user = await _loginUseCase.execute(email, password);
 
       if (!mounted) return;
@@ -66,12 +73,172 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       final mensajeError = AppErrorHandler.parseMessage(e);
-      AppMessenger.showErrorSnackBar(context, mensajeError);
+      final esNoVerificado = mensajeError.toLowerCase().contains('no ha sido verificado') ||
+          mensajeError.toLowerCase().contains('verificación') ||
+          mensajeError.toLowerCase().contains('confirmación');
+
+      if (esNoVerificado) {
+        // Mostrar diálogo interactivo para reenviar el enlace de confirmación
+        _mostrarDialogoReenvio(context, email, password);
+      } else {
+        AppMessenger.showErrorSnackBar(context, mensajeError);
+      }
     } finally {
       if (mounted) {
         setState(() => _cargando = false);
       }
     }
+  }
+
+  /// Muestra un modal informativo cuando el correo aún no está verificado, permitiendo reenviarlo
+  void _mostrarDialogoReenvio(BuildContext context, String email, String password) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final dialogTheme = Theme.of(dialogContext);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Icon(
+                Icons.mark_email_unread_outlined,
+                color: dialogTheme.colorScheme.error,
+                size: 28,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Correo no verificado',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Tu cuenta aún no ha sido activada.\n\nHemos enviado un enlace de confirmación a:\n$email\n\nSi no lo has recibido o ha expirado, puedes solicitar un nuevo enlace ahora mismo.',
+            style: dialogTheme.textTheme.bodyMedium,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cerrar'),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.send_rounded, size: 18),
+              label: const Text('Reenviar enlace'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _reenviarCorreoConfirmacion(email, password);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Reenvía el correo de confirmación de registro
+  Future<void> _reenviarCorreoConfirmacion(String email, String password) async {
+    setState(() => _cargando = true);
+    try {
+      await _resendVerificationUseCase.execute(correo: email, contrasena: password);
+      if (!mounted) return;
+      AppMessenger.showSnackBar(
+        context,
+        mensaje: 'Correo de confirmación reenviado con éxito a $email. Revisa tu bandeja de entrada.',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final error = AppErrorHandler.parseMessage(e);
+      AppMessenger.showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) {
+        setState(() => _cargando = false);
+      }
+    }
+  }
+
+  /// Abre el formulario modal de registro y si el registro es exitoso, muestra el diálogo de confirmación
+  void _abrirModalRegistro() async {
+    final correo = await showSignUpModalBottomSheet(context);
+    if (correo != null && mounted) {
+      _mostrarDialogoConfirmacionRegistro(context, correo);
+    }
+  }
+
+  /// Muestra un diálogo informativo tras registrarse con éxito, indicando que se debe confirmar el correo
+  void _mostrarDialogoConfirmacionRegistro(BuildContext context, String correo) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final dialogTheme = Theme.of(dialogContext);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.mark_email_read_outlined,
+                color: dialogTheme.colorScheme.primary,
+                size: 28,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Confirma tu correo',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '¡Tu cuenta ha sido creada exitosamente!',
+                style: dialogTheme.textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: dialogTheme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Hemos enviado un enlace de confirmación a:',
+                style: dialogTheme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                correo,
+                style: dialogTheme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Por favor verifica tu bandeja de entrada (o carpeta de spam) y activa tu cuenta para poder iniciar sesión.',
+                style: dialogTheme.textTheme.bodyMedium?.copyWith(
+                  color: dialogTheme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Entendido'),
+            ),
+          ],
+        );
+      },
+    );
+
+    AppMessenger.showSnackBar(
+      context,
+      mensaje: 'Correo de confirmación enviado a $correo. Revisa tu bandeja de entrada.',
+    );
   }
 
   @override
@@ -197,9 +364,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           const Text('¿No tienes cuenta?'),
                           TextButton(
-                            onPressed: () {
-                              showSignUpModalBottomSheet(context);
-                            },
+                            onPressed: _abrirModalRegistro,
                             child: const Text('Regístrate'),
                           ),
                         ],

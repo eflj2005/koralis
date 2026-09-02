@@ -112,52 +112,20 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
     setState(() => _cargando = true);
 
     try {
-      // 1. Guardar instancias de navegación y ScaffoldMessenger antes del llamado asíncrono
-      final navigator = Navigator.of(context, rootNavigator: true);
-      final messenger = ScaffoldMessenger.of(context);
+      final correoRegistrado = _emailController.text.trim();
 
-      // 2. Ejecutar el registro en Firebase Auth y Firestore
-      final user = await _signUpUseCase.execute(
+      // 1. Ejecutar el registro en Firebase Auth y Firestore (envía correo de confirmación y cierra sesión)
+      await _signUpUseCase.execute(
         nombre: _nameController.text.trim(),
-        correo: _emailController.text.trim(),
+        correo: correoRegistrado,
         contrasena: _passwordController.text,
         nacimiento: _nacimientoController.text.trim(),
       );
 
       if (!mounted) return;
 
-      // 3. Cerrar el modal emergente
-      Navigator.of(context).pop();
-
-      // 4. Mostrar feedback de éxito en la pantalla principal
-      messenger.showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.check_circle_outline_rounded, color: Colors.white),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '¡Cuenta creada con éxito! Bienvenido a Koralis.',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFF2E7D32),
-          duration: const Duration(seconds: 4),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
-
-      // 5. Redireccionar al Dashboard pasando el usuario registrado
-      navigator.pushReplacementNamed('/dashboard', arguments: user);
+      // 2. Cerrar el modal emergente de registro retornando el correo registrado
+      Navigator.of(context).pop(correoRegistrado);
     } catch (e) {
       if (!mounted) return;
       final mensajeError = AppErrorHandler.parseMessage(e);
@@ -396,8 +364,8 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
 }
 
 /// Función helper para abrir el formulario de registro en el modal emergente genérico.
-Future<void> showSignUpModalBottomSheet(BuildContext context) {
-  return showAppModalBottomSheet(
+Future<String?> showSignUpModalBottomSheet(BuildContext context) {
+  return showAppModalBottomSheet<String>(
     context,
     child: const SignUpFormSheet(),
   );
