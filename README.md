@@ -1,6 +1,6 @@
-# 🐾 PetCare App
+# 🚀 Koralis App
 
-Aplicación móvil desarrollada en **Flutter** para la gestión integral de mascotas. Permite registrar mascotas, gestionar perfiles de usuario y navegar entre módulos de forma estructurada, todo respaldado por una base de datos local SQLite.
+Aplicación móvil desarrollada en **Flutter** para la gestión de instrumentos financieros. Permite autenticación de usuarios, gestión de perfiles e integración con servicios en la nube (Firebase Auth, Firestore, Firebase Storage), todo respaldado por una arquitectura limpia (**Clean Architecture**) y un paquete central `core` reutilizable.
 
 ---
 
@@ -22,19 +22,18 @@ Aplicación móvil desarrollada en **Flutter** para la gestión integral de masc
 
 ## 📖 Descripción
 
-PetCare App es un proyecto de referencia que combina una arquitectura limpia (**Clean Architecture**) con un sistema de temas y componentes desacoplado. El paquete interno `core` actúa como una librería agnóstica reutilizable en cualquier otro proyecto Flutter, mientras que la lógica propia de PetCare reside exclusivamente en la carpeta `lib/app`.
+Koralis App combina una arquitectura limpia (**Clean Architecture**) con un sistema de temas y componentes desacoplado. El paquete interno `core` actúa como una librería agnóstica reutilizable en cualquier otro proyecto Flutter, mientras que la lógica propia de Koralis reside exclusivamente en las capas de negocio y la carpeta `lib/app`.
 
 ## ✅ Características
 
-- **Autenticación** de usuario (login con correo y contraseña).
-- **Dashboard** principal con resumen de mascotas registradas.
-- **Gestión de mascotas**: listado con nombre, raza, edad y peso.
-- **Perfil de usuario** con avatar y opción de cierre de sesión.
+- **Autenticación** de usuario (login con correo y contraseña vía Firebase Auth).
+- **Dashboard** principal para resumen financiero y accesos rápidos.
+- **Perfil de usuario** con avatar, datos personales y opción de cierre de sesión.
 - **Cierre de sesión** con borrado completo del historial de navegación.
 - **Modal "En Construcción"** reutilizable para funcionalidades pendientes.
 - **Spinner de carga** personalizable desde la configuración de estilos de la app.
-- **Texto en arco** en la pantalla de login para la marca PetCare.
-- **Soporte de temas** totalmente parametrizable mediante inyección de colores y tipografía.
+- **Texto en arco** en la pantalla de login para la marca Koralis.
+- **Soporte de temas** totalmente parametrizable mediante inyección de colores y tipografía (`KoralisColors` y `KoralisTypography`).
 
 ---
 
@@ -43,12 +42,12 @@ PetCare App es un proyecto de referencia que combina una arquitectura limpia (**
 | Paquete | Versión | Uso |
 |---|---|---|
 | `flutter` | SDK | Framework principal |
-| `sqflite` | ^2.x | Base de datos local SQLite (vía paquete `core`) |
-| `google_fonts` | ^8.1.0 | Tipografía Comic Neue |
+| `firebase_core` | ^4.13.0 | Núcleo de integración con Firebase |
+| `google_fonts` | ^8.1.0 | Tipografías Manrope y Hanken Grotesk |
 | `flutter_arc_text` | ^0.6.0 | Texto curvo en pantalla de Login |
 | `cupertino_icons` | ^1.0.8 | Íconos estilo iOS |
 
-> El paquete interno `packages/core` encapsula `sqflite`, `DatabaseService`, widgets reutilizables y el sistema de theming.
+> El paquete interno `packages/core` encapsula widgets reutilizables, validadores, manejo de errores y el sistema de theming.
 
 ---
 
@@ -72,8 +71,8 @@ flutter doctor
 
 1. **Clona el repositorio**
    ```bash
-   git clone https://github.com/tu-usuario/petcare_app.git
-   cd petcare_app
+   git clone https://github.com/tu-usuario/koralis_app.git
+   cd koralis_app
    ```
 
 2. **Instala las dependencias del paquete `core`**
@@ -109,8 +108,6 @@ flutter build apk --release
 flutter build ios --release
 ```
 
-> **Nota:** Al ejecutar por primera vez, la base de datos SQLite se creará automáticamente y se poblarán los datos de prueba iniciales (usuario administrador y mascotas de ejemplo).
-
 ---
 
 ## 🏗 Arquitectura
@@ -120,16 +117,16 @@ El proyecto sigue los principios de **Clean Architecture** propuestos por Robert
 ### Capas
 
 #### `presentation/`
-Contiene Widgets y Screens de Flutter. Es la capa más externa y solo conoce a la capa de Dominio. Jamás interactúa directamente con la base de datos.
+Contiene Widgets y Screens de Flutter. Es la capa más externa y solo conoce a la capa de Dominio. Jamás interactúa directamente con los servicios de infraestructura o bases de datos.
 
 #### `domain/`
 Es el corazón del negocio. Contiene:
-- **Entities**: Modelos puros de datos sin dependencias externas (`User`, `Pet`, `Profile`).
+- **Entities**: Modelos puros de datos sin dependencias externas (`User`, `Profile`).
 - **Repositories (Interfaces)**: Contratos abstractos que dictan qué operaciones existen, sin importar cómo se implementan.
 - **Use Cases**: Orquestadores de lógica de negocio. Usan las interfaces del repositorio.
 
 #### `data/`
-Es la capa técnica que implementa los contratos definidos en `domain/`. Aquí viven los `RepositoryImpl` que realizan las consultas reales a SQLite a través del `AppDatabase`.
+Es la capa técnica que implementa los contratos definidos en `domain/`. Aquí viven los `RepositoryImpl` que interactúan con Firebase y servicios remotos.
 
 ### Regla de Dependencias
 
@@ -144,42 +141,45 @@ Las capas externas siempre dependen de las internas. El Dominio nunca importa ar
 Ubicado en `packages/core/`, es una librería agnóstica de negocio que provee:
 
 - `CoreTheme` / `CoreThemeExtension`: Sistema de temas parametrizable por inyección.
-- `DatabaseService`: Wrapper genérico sobre `sqflite`.
 - Widgets reutilizables: `AppButton`, `AppTextField`, `AppSpinner`, `LoadingWidget`, `EmptyWidget`, `AppMenuButton`, `showUnderConstructionDialog`.
 - `CoreValidators`: Validadores de formularios.
 - `CoreColors` / `CoreTypography`: Constantes de fábrica (colores base de Flutter).
 
-La identidad visual de PetCare se inyecta desde `lib/app/styles.dart`, manteniendo el `core` libre de dependencias de marca.
+La identidad visual de Koralis se inyecta desde `lib/app/styles.dart`, manteniendo el `core` libre de dependencias de marca.
 
 ---
 
 ## 📁 Estructura del Proyecto
 
 ```
-petcare_app/
+koralis_app/
 ├── lib/
 │   ├── app/
-│   │   ├── database.dart      # AppDatabase (SQLite + datos semilla)
-│   │   ├── router.dart        # AppRouter (rutas nombradas)
-│   │   └── styles.dart        # AppStyles, PetCareColors, PetCareTypography
+│   │   ├── firebase.dart                  # AppFirebase (Inicialización centralizada)
+│   │   ├── firebase_auth_config.dart      # FirebaseAuthService
+│   │   ├── firebase_firestore_config.dart # FirebaseFirestoreService
+│   │   ├── firebase_storage_config.dart   # FirebaseStorageService
+│   │   ├── router.dart                    # AppRouter (rutas nombradas)
+│   │   └── styles.dart                    # AppStyles, KoralisColors, KoralisTypography
 │   ├── features/
-│   │   ├── auth/              # Módulo de autenticación
+│   │   ├── auth/                          # Módulo de autenticación
 │   │   │   ├── data/
 │   │   │   ├── domain/
 │   │   │   └── presentation/
-│   │   ├── dashboard/         # Módulo de dashboard
-│   │   ├── pets/              # Módulo de mascotas
-│   │   └── profile/           # Módulo de perfil de usuario
+│   │   ├── dashboard/                     # Módulo de dashboard
+│   │   └── profile/                       # Módulo de perfil de usuario
+│   ├── firebase_options.dart
 │   └── main.dart
 ├── packages/
-│   └── core/                  # Librería interna reutilizable
+│   └── core/                              # Librería interna reutilizable
 │       └── lib/
 │           └── src/
 │               ├── constants.dart
+│               ├── errors/
 │               ├── theme.dart
 │               ├── validators.dart
 │               └── widgets.dart
-├── images/                    # Assets estáticos (GIF, avatares)
+├── images/                                # Assets estáticos (GIF, logos, avatares)
 ├── pubspec.yaml
 └── README.md
 ```
@@ -190,21 +190,18 @@ petcare_app/
 |---|---|---|
 | `/` | `LoginScreen` | No |
 | `/dashboard` | `DashboardScreen` | `User` |
-| `/pets` | `PetsScreen` | No |
 | `/profile` | `ProfileScreen` | `Profile` |
 
 ---
 
 ## 🔑 Credenciales de Prueba
 
-Al iniciar la aplicación por primera vez, se crean automáticamente los siguientes datos de prueba:
+Para pruebas en entornos de desarrollo con Firebase Auth:
 
 | Campo | Valor |
 |---|---|
-| **Correo** | `admin@petcare.com` |
-| **Contraseña** | `PetCare123*` |
-
-> Estos datos son generados por el método `_seedInitialData` en `lib/app/database.dart` y **solo se insertan una vez** al crear la base de datos.
+| **Correo** | `admin@koralis.com` |
+| **Contraseña** | `Koralis123*` |
 
 ---
 

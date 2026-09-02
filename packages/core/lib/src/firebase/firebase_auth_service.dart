@@ -5,7 +5,7 @@ import 'firebase_errors.dart';
 /// Servicio genérico desacoplado para la gestión de Autenticación con Firebase.
 ///
 /// Soporta múltiples proveedores de autenticación:
-/// - Correo electrónico y contraseña (siempre disponible).
+/// - Correo electrónico y contraseña (con soporte de confirmación por correo `sendEmailVerification`).
 /// - Google Sign-In (opcional: se habilita inyectando una instancia de [GoogleSignIn]).
 ///
 /// Si [googleSignIn] es `null`, los métodos de Google lanzarán [UnsupportedError].
@@ -44,23 +44,44 @@ class FirebaseAuthService {
   /// Indica si existe una sesión activa válida.
   bool get isAuthenticated => _auth.currentUser != null;
 
+  /// Indica si el correo del usuario actualmente autenticado está verificado.
+  bool get isEmailVerified => _auth.currentUser?.emailVerified ?? false;
+
+  /// Refresca los datos del usuario en Firebase Auth para obtener el estado de verificación actualizado.
+  Future<void> reloadCurrentUser() async {
+    try {
+      await _auth.currentUser?.reload();
+    } on FirebaseAuthException catch (e) {
+      throw FirebaseErrors.mapMessage(e.code);
+    } catch (e) {
+      throw FirebaseErrors.getErrorMessage(e);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Autenticación por Correo y Contraseña
   // ---------------------------------------------------------------------------
 
   /// Registra un nuevo usuario utilizando correo electrónico y contraseña.
   ///
+  /// Si [sendVerification] es `true`, envía automáticamente el correo de verificación.
   /// Retorna el UID del nuevo usuario si el registro es exitoso.
   /// Lanza una excepción con un código/mensaje procesado en caso de falla.
   Future<String?> signUpWithEmail({
     required String email,
     required String password,
+    bool sendVerification = true,
   }) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
+
+      if (sendVerification && credential.user != null) {
+        await credential.user!.sendEmailVerification();
+      }
+
       return credential.user?.uid;
     } on FirebaseAuthException catch (e) {
       throw FirebaseErrors.mapMessage(e.code);
@@ -86,6 +107,49 @@ class FirebaseAuthService {
       throw FirebaseErrors.mapMessage(e.code);
     } catch (e) {
       throw FirebaseErrors.getErrorMessage(e);
+    }
+  }
+
+  /// Envía un correo de verificación al usuario actualmente autenticado.
+  Future<void> sendEmailVerification() async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null && !user.emailVerified) {
+        await user.sendEmailVerification();
+      }
+    } on FirebaseAuthException catch (e) {
+      throw FirebaseErrors.mapMessage(e.code);
+    } catch (e) {
+      throw FirebaseErrors.getErrorMessage(e);
+    }
+  }
+
+  /// Reenvía el correo de confirmación autenticando temporalmente con las credenciales
+  /// provistas, enviando el correo y cerrando la sesión de forma inmediata.
+  Future<void> sendEmailVerificationFor({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+
+      final user = credential.user;
+      if (user != null) {
+        await user.reload();
+        if (!user.emailVerified) {
+          await user.sendEmailVerification();
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      throw FirebaseErrors.mapMessage(e.code);
+    } catch (e) {
+      throw FirebaseErrors.getErrorMessage(e);
+    } finally {
+      // Siempre cerrar la sesión temporal al terminar el reenvío
+      await _auth.signOut();
     }
   }
 

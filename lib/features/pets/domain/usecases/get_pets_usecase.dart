@@ -1,5 +1,5 @@
 // =============================================================================
-// ⚠️ [DEPRECATED / BORRAR] - CÓDIGO DE REFERENCIA TEMPORAL (PETCARE)
+// ⚠️ [DEPRECATED / BORRAR] - CÓDIGO DE REFERENCIA TEMPORAL HEREDADO (TRANSICIÓN A KORALIS)
 // =============================================================================
 
 import '../entities/pet.dart';
@@ -9,7 +9,7 @@ import '../repositories/pet_repository.dart';
 /// 
 /// ⚠️ **OBSOLETO**: Mantenido temporalmente como referencia arquitectónica. Pendiente de borrar.
 // ignore: deprecated_member_use_from_same_package
-@Deprecated('Código de referencia temporal de PetCare. Será eliminado al construir Koralis.')
+@Deprecated('Código de referencia temporal heredado. Será eliminado al construir los módulos financieros de Koralis.')
 class GetPetsUseCase {
   // ignore: deprecated_member_use_from_same_package
   final PetRepository repository;

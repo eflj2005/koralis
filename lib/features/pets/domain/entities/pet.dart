@@ -1,11 +1,11 @@
 // =============================================================================
-// ⚠️ [DEPRECATED / BORRAR] - CÓDIGO DE REFERENCIA TEMPORAL (PETCARE)
+// ⚠️ [DEPRECATED / BORRAR] - CÓDIGO DE REFERENCIA TEMPORAL HEREDADO (TRANSICIÓN A KORALIS)
 // =============================================================================
 
 /// Entidad de dominio que representa una mascota registrada en la aplicación.
 /// 
 /// ⚠️ **OBSOLETO**: Mantenido temporalmente como referencia arquitectónica. Pendiente de borrar.
-@Deprecated('Código de referencia temporal de PetCare. Será eliminado al construir Koralis.')
+@Deprecated('Código de referencia temporal heredado. Será eliminado al construir los módulos financieros de Koralis.')
 class Pet {
   /// Identificador único del documento en Firestore.
   final String id;

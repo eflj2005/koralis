@@ -1,5 +1,5 @@
 // =============================================================================
-// ⚠️ [DEPRECATED / BORRAR] - CÓDIGO DE REFERENCIA TEMPORAL (PETCARE)
+// ⚠️ [DEPRECATED / BORRAR] - CÓDIGO DE REFERENCIA TEMPORAL HEREDADO (TRANSICIÓN A KORALIS)
 // =============================================================================
 
 import 'package:flutter_test/flutter_test.dart';
