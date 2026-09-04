@@ -74,7 +74,8 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       final mensajeError = AppErrorHandler.parseMessage(e);
-      final esNoVerificado = mensajeError.toLowerCase().contains('no ha sido verificado') ||
+      final esNoVerificado =
+          mensajeError.toLowerCase().contains('no ha sido verificado') ||
           mensajeError.toLowerCase().contains('verificación') ||
           mensajeError.toLowerCase().contains('confirmación');
 
@@ -92,13 +93,19 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// Muestra un modal informativo cuando el correo aún no está verificado, permitiendo reenviarlo
-  void _mostrarDialogoReenvio(BuildContext context, String email, String password) {
+  void _mostrarDialogoReenvio(
+    BuildContext context,
+    String email,
+    String password,
+  ) {
     showDialog(
       context: context,
       builder: (dialogContext) {
         final dialogTheme = Theme.of(dialogContext);
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: Row(
             children: [
               Icon(
@@ -139,14 +146,21 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// Reenvía el correo de confirmación de registro
-  Future<void> _reenviarCorreoConfirmacion(String email, String password) async {
+  Future<void> _reenviarCorreoConfirmacion(
+    String email,
+    String password,
+  ) async {
     setState(() => _cargando = true);
     try {
-      await _resendVerificationUseCase.execute(correo: email, contrasena: password);
+      await _resendVerificationUseCase.execute(
+        correo: email,
+        contrasena: password,
+      );
       if (!mounted) return;
       AppMessenger.showSnackBar(
         context,
-        mensaje: 'Correo de confirmación reenviado con éxito a $email. Revisa tu bandeja de entrada.',
+        mensaje:
+            'Correo de confirmación reenviado con éxito a $email. Revisa tu bandeja de entrada.',
       );
     } catch (e) {
       if (!mounted) return;
@@ -168,7 +182,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// Muestra un diálogo informativo tras registrarse con éxito, indicando que se debe confirmar el correo
-  void _mostrarDialogoConfirmacionRegistro(BuildContext context, String correo) {
+  void _mostrarDialogoConfirmacionRegistro(
+    BuildContext context,
+    String correo,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -238,7 +255,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     AppMessenger.showSnackBar(
       context,
-      mensaje: 'Correo de confirmación enviado a $correo. Revisa tu bandeja de entrada.',
+      mensaje:
+          'Correo de confirmación enviado a $correo. Revisa tu bandeja de entrada.',
     );
   }
 
@@ -255,7 +273,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// Muestra diálogo informativo tras enviar el enlace de recuperación
-  void _mostrarDialogoConfirmacionRecuperacion(BuildContext context, String correo) {
+  void _mostrarDialogoConfirmacionRecuperacion(
+    BuildContext context,
+    String correo,
+  ) {
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -315,7 +336,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -323,6 +343,14 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Stack(
         children: [
+          // --- Imagen ilustrativa de fondo con transparencia y cobertura total ---
+          Positioned.fill(
+            child: Opacity(
+              opacity: 1,
+              child: Image.asset('images/fondo_inicio.png', fit: BoxFit.cover),
+            ),
+          ),
+
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -338,7 +366,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       // --- Encabezado / Logo ---
                       SizedBox(
-                        height: 140,
+                        height: 180,
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
@@ -347,17 +375,15 @@ class _LoginScreenState extends State<LoginScreen> {
                               // Logo principal de la aplicación Koralis
                               child: Image.asset(
                                 'images/logo.png',
-                                width: 130,
-                                height: 130,
                                 fit: BoxFit.contain,
                               ),
                             ),
                             ArcText(
-                              radius: 70,
+                              radius: 100,
                               text: 'K O R A L I S',
                               textStyle:
                                   theme.textTheme.titleLarge?.copyWith(
-                                    fontSize: 35,
+                                    fontSize: 50,
                                     color: theme.colorScheme.primary,
                                     fontWeight: FontWeight.bold,
                                   ) ??
@@ -411,7 +437,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 12),
 
                       // --- Enlace: ¿Olvidaste tu contraseña? ---
-                       Align(
+                      Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           onPressed: _abrirModalRecuperarContrasena,
