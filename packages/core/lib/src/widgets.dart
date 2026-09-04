@@ -123,6 +123,9 @@ class AppTextField extends StatefulWidget {
   /// Color de fondo del campo de texto (por defecto blanco para asegurar contraste).
   final Color fillColor;
 
+  /// Radio de curvatura para redondear ligeramente las esquinas del campo de texto (por defecto 12 px).
+  final BorderRadius borderRadius;
+
   const AppTextField({
     super.key,
     this.label,
@@ -135,6 +138,7 @@ class AppTextField extends StatefulWidget {
     this.contentPadding,
     this.textCapitalization = TextCapitalization.none,
     this.fillColor = Colors.white,
+    this.borderRadius = const BorderRadius.all(Radius.circular(12.0)),
   });
 
   @override
@@ -196,7 +200,9 @@ class _AppTextFieldState extends State<AppTextField> {
           color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
           fontFamilyFallback: fuentesRespaldo,
         ),
-        border: const OutlineInputBorder(),
+        border: OutlineInputBorder(
+          borderRadius: widget.borderRadius,
+        ),
         // Ícono prefijo compacto si fue proporcionado
         prefixIcon: widget.icono != null
             ? Padding(

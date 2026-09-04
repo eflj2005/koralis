@@ -128,10 +128,13 @@ class CoreTheme {
         color: background,
         surfaceTintColor: Colors.transparent,
       ),
-      // Configuración global para campos de texto con fondo blanco para asegurar contraste
+      // Configuración global para campos de texto con fondo blanco y esquinas redondeadas para asegurar contraste y armonía visual
       inputDecorationTheme: const InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12.0)),
+        ),
       ),
       textTheme: finalTextTheme,
       extensions: [

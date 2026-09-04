@@ -4,13 +4,18 @@ import 'package:core/core.dart';
 
 void main() {
   group('CoreTheme - Configuración de Cuadros de Texto', () {
-    test('CoreTheme.buildTheme debe configurar el fondo de los campos de texto en blanco por defecto', () {
+    test('CoreTheme.buildTheme debe configurar el fondo en blanco y esquinas redondeadas por defecto', () {
       // Construir el tema base
       final tema = CoreTheme.buildTheme();
 
       // Verificar que inputDecorationTheme tenga relleno activo y color blanco
       expect(tema.inputDecorationTheme.filled, isTrue);
       expect(tema.inputDecorationTheme.fillColor, equals(Colors.white));
+
+      // Verificar que el borde sea OutlineInputBorder con esquinas redondeadas a 12 px
+      final borde = tema.inputDecorationTheme.border as OutlineInputBorder?;
+      expect(borde, isNotNull);
+      expect(borde?.borderRadius, equals(const BorderRadius.all(Radius.circular(12.0))));
     });
   });
 
@@ -38,6 +43,11 @@ void main() {
       // Verificar que la decoración tenga relleno blanco para contraste
       expect(decoracion?.filled, isTrue);
       expect(decoracion?.fillColor, equals(Colors.white));
+
+      // Verificar que el borde tenga las esquinas ligeramente redondeadas (12 px)
+      final borde = decoracion?.border as OutlineInputBorder?;
+      expect(borde, isNotNull);
+      expect(borde?.borderRadius, equals(const BorderRadius.all(Radius.circular(12.0))));
     });
 
     testWidgets('AppTextField permite personalizar fillColor si es necesario', (WidgetTester tester) async {
@@ -58,6 +68,27 @@ void main() {
       final textField = tester.widget<TextField>(find.byType(TextField));
       expect(textField.decoration?.filled, isTrue);
       expect(textField.decoration?.fillColor, equals(colorPersonalizado));
+    });
+
+    testWidgets('AppTextField permite personalizar borderRadius si es necesario', (WidgetTester tester) async {
+      const radioPersonalizado = BorderRadius.all(Radius.circular(20.0));
+
+      // Renderizar con radio de borde personalizado
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AppTextField(
+              label: 'Campo con radio custom',
+              borderRadius: radioPersonalizado,
+            ),
+          ),
+        ),
+      );
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      final borde = textField.decoration?.border as OutlineInputBorder?;
+      expect(borde, isNotNull);
+      expect(borde?.borderRadius, equals(radioPersonalizado));
     });
   });
 }
