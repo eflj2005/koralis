@@ -120,6 +120,9 @@ class AppTextField extends StatefulWidget {
   /// Control de mayúsculas automáticas del texto.
   final TextCapitalization textCapitalization;
 
+  /// Color de fondo del campo de texto (por defecto blanco para asegurar contraste).
+  final Color fillColor;
+
   const AppTextField({
     super.key,
     this.label,
@@ -131,6 +134,7 @@ class AppTextField extends StatefulWidget {
     this.tipoTeclado = TextInputType.text,
     this.contentPadding,
     this.textCapitalization = TextCapitalization.none,
+    this.fillColor = Colors.white,
   });
 
   @override
@@ -179,6 +183,8 @@ class _AppTextFieldState extends State<AppTextField> {
       ),
       decoration: InputDecoration(
         isDense: true,
+        filled: true,
+        fillColor: widget.fillColor,
         contentPadding: widget.contentPadding ??
             const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         labelText: widget.label,
