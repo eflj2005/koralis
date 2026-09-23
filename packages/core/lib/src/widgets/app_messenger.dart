@@ -56,15 +56,35 @@ class AppMessenger {
     );
   }
 
+  /// Oculta el [SnackBar] activo inmediatamente de forma segura.
+  static void hide(BuildContext context) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    }
+  }
+
+  /// Limpia todos los [SnackBar] en cola o activos de la pantalla de forma segura.
+  static void clear(BuildContext context) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+    }
+  }
+
   /// Muestra un [SnackBar] configurable en pantalla respetando el tema de la aplicación.
   static void showSnackBar(
     BuildContext context, {
     required String mensaje,
     MessengerType tipo = MessengerType.info,
     Duration duracion = const Duration(seconds: 3),
+    String accionLabel = 'Aceptar',
+    VoidCallback? onAccion,
   }) {
+    if (!context.mounted) return;
+
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    // Captura segura de la instancia ScaffoldMessengerState antes de construir el widget
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     Color backgroundColor;
     Color iconColor;
@@ -88,10 +108,10 @@ class AppMessenger {
         break;
     }
 
-    // Ocultar cualquier SnackBar previo activo
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    // Ocultar cualquier SnackBar previo activo usando la referencia capturada
+    scaffoldMessenger.hideCurrentSnackBar();
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    scaffoldMessenger.showSnackBar(
       SnackBar(
         content: Row(
           children: [
@@ -115,10 +135,13 @@ class AppMessenger {
           borderRadius: BorderRadius.circular(12),
         ),
         action: SnackBarAction(
-          label: 'Aceptar',
+          label: accionLabel,
           textColor: iconColor,
           onPressed: () {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            // Empleamos scaffoldMessenger directamente para evitar consultar ancestros sobre un
+            // context que pudo haber sido desactivado si la pantalla cambió mientras el SnackBar seguía visible.
+            scaffoldMessenger.hideCurrentSnackBar();
+            onAccion?.call();
           },
         ),
       ),

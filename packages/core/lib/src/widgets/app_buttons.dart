@@ -125,3 +125,65 @@ class AppMenuButton extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// AppFloatingActionButton
+// ---------------------------------------------------------------------------
+
+/// Botón de acción flotante circular (FloatingActionButton) del core.
+///
+/// Diseñado para acciones primarias emergentes en pantallas (e.g. agregar nuevo cliente).
+class AppFloatingActionButton extends StatelessWidget {
+  /// Ícono a renderizar dentro del botón (por defecto [Icons.add_rounded]).
+  final IconData icono;
+
+  /// Acción a ejecutar al presionar el botón.
+  final VoidCallback? onPressed;
+
+  /// Mensaje del tooltip accesible al mantener presionado.
+  final String? mensajeTooltip;
+
+  /// Color de fondo personalizado (por defecto [ColorScheme.primary]).
+  final Color? colorFondo;
+
+  /// Color del glifo del ícono (por defecto [ColorScheme.onPrimary]).
+  final Color? colorIcono;
+
+  /// Etiqueta única para animaciones Hero.
+  final Object? heroTag;
+
+  const AppFloatingActionButton({
+    super.key,
+    this.icono = Icons.add_rounded,
+    required this.onPressed,
+    this.mensajeTooltip,
+    this.colorFondo,
+    this.colorIcono,
+    this.heroTag,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final fondoFinal = colorFondo ?? colorScheme.primary;
+    final iconoFinal = colorIcono ?? colorScheme.onPrimary;
+
+    return FloatingActionButton(
+      heroTag: heroTag,
+      onPressed: onPressed,
+      tooltip: mensajeTooltip,
+      backgroundColor: fondoFinal,
+      foregroundColor: iconoFinal,
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Icon(
+        icono,
+        size: 28,
+        color: iconoFinal,
+      ),
+    );
+  }
+}

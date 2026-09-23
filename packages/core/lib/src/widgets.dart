@@ -19,3 +19,9 @@ export 'widgets/app_modals.dart';
 
 // 5. Notificaciones, alertas y mensajería en pantalla
 export 'widgets/app_messenger.dart';
+
+// 6. Navegación lateral, pestañas de carpetas y menús
+export 'widgets/app_navigation.dart';
+
+// 7. Tarjetas y contenedores de listados estructurados
+export 'widgets/app_cards.dart';
