@@ -4,6 +4,8 @@ import 'package:koralis_app/features/auth/presentation/sign_up_screen.dart';
 import 'package:koralis_app/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:koralis_app/features/pets/presentation/pets_screen.dart';
 import 'package:koralis_app/features/profile/presentation/profile_screen.dart';
+import 'package:koralis_app/features/clients/presentation/clients_screen.dart';
+import 'package:koralis_app/features/clients/presentation/client_form_screen.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 
@@ -19,6 +21,25 @@ class AppRouter {
       case '/dashboard':
         final user = settings.arguments as User;
         return MaterialPageRoute(builder: (_) => DashboardScreen(user: user));
+      case '/clients':
+        final user = settings.arguments as User;
+        return MaterialPageRoute(builder: (_) => ClientsScreen(user: user));
+      case '/client_form':
+        if (settings.arguments is ClientFormArgs) {
+          final args = settings.arguments as ClientFormArgs;
+          return MaterialPageRoute(
+            builder: (_) => ClientFormScreen(
+              user: args.user,
+              client: args.client,
+            ),
+          );
+        } else if (settings.arguments is User) {
+          final user = settings.arguments as User;
+          return MaterialPageRoute(
+            builder: (_) => ClientFormScreen(user: user),
+          );
+        }
+        return MaterialPageRoute(builder: (_) => const LoginScreen());
       case '/pets':
         // ignore: deprecated_member_use_from_same_package
         return MaterialPageRoute(builder: (_) => const PetsScreen());

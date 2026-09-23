@@ -21,6 +21,9 @@ class FirebaseFirestoreConfig {
   /// Colección raíz de perfiles de usuario.
   static const String colPerfiles = 'profiles';
 
+  /// Colección raíz de clientes de la aplicación Koralis.
+  static const String colClientes = 'clients';
+
   // ---------------------------------------------------------------------------
   // Campos Comunes
   // ---------------------------------------------------------------------------
