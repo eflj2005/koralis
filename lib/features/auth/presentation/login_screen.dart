@@ -58,6 +58,9 @@ class _LoginScreenState extends State<LoginScreen> {
     // Evitar doble activación si ya está cargando
     if (_cargando) return;
 
+    // Limpiar notificaciones previas en pantalla
+    AppMessenger.clear(context);
+
     setState(() => _cargando = true);
 
     final email = _emailController.text.trim();
@@ -68,6 +71,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = await _loginUseCase.execute(email, password);
 
       if (!mounted) return;
+
+      // Limpiar cualquier notificación o error residual antes de navegar al dashboard
+      AppMessenger.clear(context);
 
       // Navegar a Dashboard usando la ruta nombrada y pasando el usuario como argumento
       Navigator.pushReplacementNamed(context, '/dashboard', arguments: user);
