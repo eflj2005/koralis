@@ -17,12 +17,16 @@ class AppFolderTabItem {
   /// Acción a disparar al interactuar con la pestaña.
   final VoidCallback? onTap;
 
+  /// Altura personalizada opcional. Si es null, se calcula automáticamente según el texto.
+  final double? alto;
+
   const AppFolderTabItem({
     required this.indice,
     required this.titulo,
     required this.icono,
     required this.colorAcento,
     this.onTap,
+    this.alto,
   });
 }
 
@@ -182,6 +186,10 @@ class AppFolderTabBar extends StatelessWidget {
   final double traslape;
   final double anchoPestana;
 
+  /// Si es true (por defecto), calcula dinámicamente la altura de cada pestaña
+  /// en función de la longitud de su texto, optimizando el espacio vertical en la barra lateral.
+  final bool ajustarAltoAlTexto;
+
   const AppFolderTabBar({
     super.key,
     required this.items,
@@ -191,14 +199,68 @@ class AppFolderTabBar extends StatelessWidget {
     this.altoPestana = 168.0,
     this.traslape = 22.0,
     this.anchoPestana = 44.0,
+    this.ajustarAltoAlTexto = true,
   });
+
+  /// Calcula la altura requerida para un elemento de pestaña según la longitud de su texto.
+  double _calcularAltoItem(BuildContext context, AppFolderTabItem item) {
+    if (item.alto != null) return item.alto!;
+    if (!ajustarAltoAlTexto) return altoPestana;
+
+    final theme = Theme.of(context);
+    final textStyle = theme.textTheme.labelMedium?.copyWith(
+      fontWeight: FontWeight.bold,
+      letterSpacing: 0.5,
+    );
+
+    final textPainter = TextPainter(
+      text: TextSpan(text: item.titulo, style: textStyle),
+      textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+
+    const double tamanoIcono = 20.0;
+    const double separacionIconoTexto = 8.0;
+    const double paddingSuperior = 12.0;
+    const double paddingInferior = 28.0;
+    const double margenReserva = 14.0;
+    const double altoMinimo = 110.0;
+
+    final double altoCalculado = paddingSuperior +
+        textPainter.width +
+        separacionIconoTexto +
+        tamanoIcono +
+        paddingInferior +
+        margenReserva;
+
+    return altoCalculado < altoMinimo ? altoMinimo : altoCalculado;
+  }
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
 
-    final double pasoVertical = altoPestana - traslape;
-    final double alturaTotal = altoPestana + (items.length - 1) * pasoVertical;
+    // 1. Calculamos la altura de cada pestaña
+    final Map<int, double> alturasPorIndice = {};
+    for (final item in items) {
+      alturasPorIndice[item.indice] = _calcularAltoItem(context, item);
+    }
+
+    // 2. Calculamos los desplazamientos verticales (topOffset) de forma acumulativa
+    final Map<int, double> offsetsSuperiores = {};
+    double offsetAcumulado = 0.0;
+    for (int i = 0; i < items.length; i++) {
+      final item = items[i];
+      offsetsSuperiores[item.indice] = offsetAcumulado;
+      final double alturaItem = alturasPorIndice[item.indice] ?? altoPestana;
+      offsetAcumulado += (alturaItem - traslape);
+    }
+
+    final double alturaTotal = items.isEmpty
+        ? 0.0
+        : (offsetsSuperiores[items.last.indice] ?? 0.0) +
+            (alturasPorIndice[items.last.indice] ?? altoPestana);
 
     // Para lograr el efecto de archivador donde la solapa activa resalta sobre las demás,
     // ordenamos el renderizado del Stack para que la seleccionada se dibuje de última (z-index superior).
@@ -225,7 +287,8 @@ class AppFolderTabBar extends StatelessWidget {
         clipBehavior: Clip.none,
         children: listaOrdenada.map((item) {
           final bool esActiva = item.indice == indiceSeleccionado;
-          final double topOffset = item.indice * pasoVertical;
+          final double topOffset = offsetsSuperiores[item.indice] ?? 0.0;
+          final double alturaPestana = alturasPorIndice[item.indice] ?? altoPestana;
 
           return Positioned(
             key: ValueKey(item.indice),
@@ -238,7 +301,7 @@ class AppFolderTabBar extends StatelessWidget {
               colorAcento: item.colorAcento,
               esActiva: esActiva,
               ancho: anchoPestana,
-              alto: altoPestana,
+              alto: alturaPestana,
               onTap: () {
                 onTabSelected?.call(item.indice);
                 item.onTap?.call();
