@@ -262,12 +262,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: 'Instrumentos',
         icono: Icons.paid_outlined,
         colorAcento: colorScheme.primary,
-        onTap: () {
+        onTap: () async {
           setState(() => _pestanaSeleccionada = 1);
-          showUnderConstructionDialog(
-            context,
-            accion: 'Módulo de Instrumentos',
-          );
+          await Navigator.pushNamed(context, '/instruments', arguments: widget.user);
+          if (mounted) {
+            setState(() => _pestanaSeleccionada = null);
+          }
         },
       ),
       AppFolderTabItem(
@@ -469,9 +469,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         _buildTarjetaDashboard(
                           context: context,
                           onTap: () {
-                            showUnderConstructionDialog(
+                            Navigator.pushNamed(
                               context,
-                              accion: 'Módulo de Instrumentos',
+                              '/instruments',
+                              arguments: widget.user,
                             );
                           },
                           child: Row(

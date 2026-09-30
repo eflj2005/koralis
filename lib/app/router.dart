@@ -6,6 +6,8 @@ import 'package:koralis_app/features/pets/presentation/pets_screen.dart';
 import 'package:koralis_app/features/profile/presentation/profile_screen.dart';
 import 'package:koralis_app/features/clients/presentation/clients_screen.dart';
 import 'package:koralis_app/features/clients/presentation/client_form_screen.dart';
+import 'package:koralis_app/features/instruments/presentation/instruments_screen.dart';
+import 'package:koralis_app/features/instruments/presentation/instrument_form_screen.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 
@@ -37,6 +39,27 @@ class AppRouter {
           final user = settings.arguments as User;
           return MaterialPageRoute(
             builder: (_) => ClientFormScreen(user: user),
+          );
+        }
+        return MaterialPageRoute(builder: (_) => const LoginScreen());
+      case '/instruments':
+        final user = settings.arguments as User;
+        return MaterialPageRoute(
+          builder: (_) => InstrumentsScreen(user: user),
+        );
+      case '/instrument_form':
+        if (settings.arguments is InstrumentFormArgs) {
+          final args = settings.arguments as InstrumentFormArgs;
+          return MaterialPageRoute(
+            builder: (_) => InstrumentFormScreen(
+              user: args.user,
+              instrument: args.instrument,
+            ),
+          );
+        } else if (settings.arguments is User) {
+          final user = settings.arguments as User;
+          return MaterialPageRoute(
+            builder: (_) => InstrumentFormScreen(user: user),
           );
         }
         return MaterialPageRoute(builder: (_) => const LoginScreen());

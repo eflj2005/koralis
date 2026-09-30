@@ -24,6 +24,9 @@ class FirebaseFirestoreConfig {
   /// Colección raíz de clientes de la aplicación Koralis.
   static const String colClientes = 'clients';
 
+  /// Colección raíz de instrumentos financieros de la aplicación Koralis.
+  static const String colInstrumentos = 'instruments';
+
   // ---------------------------------------------------------------------------
   // Campos Comunes
   // ---------------------------------------------------------------------------

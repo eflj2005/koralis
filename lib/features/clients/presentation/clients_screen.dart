@@ -286,7 +286,11 @@ class _ClientsScreenState extends State<ClientsScreen> {
         icono: Icons.paid_outlined,
         colorAcento: colorScheme.primary,
         onTap: () {
-          showUnderConstructionDialog(context, accion: 'Módulo de Instrumentos');
+          Navigator.pushReplacementNamed(
+            context,
+            '/instruments',
+            arguments: widget.user,
+          );
         },
       ),
       AppFolderTabItem(
