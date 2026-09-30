@@ -395,6 +395,18 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                   ),
                                   const SizedBox(height: 14),
 
+                                  // Campo Observación
+                                  AppTextField(
+                                    controller: _observacionCtrl,
+                                    label: 'Observación',
+                                    hint: 'Notas o comentarios sobre el cliente o la negociación...',
+                                    icono: Icons.notes_rounded,
+                                    tipoTeclado: TextInputType.multiline,
+                                    minLines: 2,
+                                    maxLines: 2,
+                                  ),
+                                  const SizedBox(height: 14),
+
                                   // Selector de Estado (Activo / Inactivo)
                                   Container(
                                     padding: const EdgeInsets.all(12),
@@ -501,16 +513,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                         ),
                                       ],
                                     ),
-                                  ),
-                                  const SizedBox(height: 14),
-
-                                  // Campo Observación
-                                  AppTextField(
-                                    controller: _observacionCtrl,
-                                    label: 'Observación',
-                                    hint: 'Notas o comentarios sobre el cliente o la negociación...',
-                                    icono: Icons.notes_rounded,
-                                    tipoTeclado: TextInputType.multiline,
                                   ),
                                   const SizedBox(height: 28),
 
