@@ -261,6 +261,21 @@ class AppListCard extends StatelessWidget {
   /// Margen exterior inferior entre bloques (por defecto 10 px).
   final double margenInferior;
 
+  /// Indica si se debe mostrar el contenedor del avatar a la izquierda.
+  /// Si es null, se determina automáticamente según la presencia de [iconoAvatar] o [textoAvatar].
+  final bool? mostrarAvatar;
+
+  /// Número máximo de líneas permitidas para el título.
+  /// Si es null, el texto continuará en los renglones necesarios sin cortarse.
+  final int? tituloMaxLines;
+
+  /// Si es true, cuando el título excede una sola línea, el subtítulo se anexa al final
+  /// del título en el segundo renglón en lugar de ocupar una línea separada.
+  final bool fusionarSubtituloSiMultilinea;
+
+  /// Widget complementario opcional que se muestra al pie de la columna textual (ej. Saldo Disponible).
+  final Widget? pie;
+
   const AppListCard({
     super.key,
     required this.titulo,
@@ -272,6 +287,10 @@ class AppListCard extends StatelessWidget {
     this.badge,
     this.onTap,
     this.margenInferior = 10.0,
+    this.mostrarAvatar,
+    this.tituloMaxLines,
+    this.fusionarSubtituloSiMultilinea = false,
+    this.pie,
   });
 
   @override
@@ -279,6 +298,8 @@ class AppListCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final colorBase = colorAcento ?? colorScheme.primary;
+    final bool renderizarAvatar = mostrarAvatar ??
+        (iconoAvatar != null || (textoAvatar != null && textoAvatar!.isNotEmpty));
 
     return Container(
       margin: EdgeInsets.only(bottom: margenInferior),
@@ -306,89 +327,172 @@ class AppListCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
             child: Row(
               children: [
-                // Avatar circular con iniciales o ícono
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: colorBase.withValues(alpha: 0.14),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: colorBase.withValues(alpha: 0.35),
-                      width: 1.5,
+                // Avatar circular con iniciales o ícono (opcional)
+                if (renderizarAvatar) ...[
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: colorBase.withValues(alpha: 0.14),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: colorBase.withValues(alpha: 0.35),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Center(
+                      child: iconoAvatar != null
+                          ? Icon(
+                              iconoAvatar,
+                              color: colorBase,
+                              size: 22,
+                            )
+                          : Text(
+                              textoAvatar != null && textoAvatar!.isNotEmpty
+                                  ? textoAvatar!.substring(0, 1).toUpperCase()
+                                  : '?',
+                              style: TextStyle(
+                                color: colorBase,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            ),
                     ),
                   ),
-                  child: Center(
-                    child: iconoAvatar != null
-                        ? Icon(
-                            iconoAvatar,
-                            color: colorBase,
-                            size: 22,
-                          )
-                        : Text(
-                            textoAvatar != null && textoAvatar!.isNotEmpty
-                                ? textoAvatar!.substring(0, 1).toUpperCase()
-                                : '?',
-                            style: TextStyle(
-                              color: colorBase,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 14),
+                  const SizedBox(width: 14),
+                ],
 
                 // Contenido textual central
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final titleStyle = theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      );
+
+                      bool saltaLinea = false;
+                      if (fusionarSubtituloSiMultilinea &&
+                          subtitulo != null &&
+                          subtitulo!.isNotEmpty &&
+                          constraints.maxWidth.isFinite) {
+                        double espacioBadge = 0.0;
+                        if (badge != null) {
+                          espacioBadge = 8.0;
+                          if (badge is AppBadge) {
+                            final badgePainter = TextPainter(
+                              text: TextSpan(
+                                text: (badge as AppBadge).texto,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                              textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+                              textScaler: MediaQuery.textScalerOf(context),
+                              maxLines: 1,
+                            )..layout();
+                            espacioBadge += badgePainter.width + 22.0;
+                          } else {
+                            espacioBadge += 70.0;
+                          }
+                        }
+
+                        final double anchoTituloDisponible =
+                            (constraints.maxWidth - espacioBadge).clamp(0.0, double.infinity);
+
+                        final textPainter = TextPainter(
+                          text: TextSpan(text: titulo, style: titleStyle),
+                          textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+                          textScaler: MediaQuery.textScalerOf(context),
+                          maxLines: 1,
+                        )..layout(maxWidth: anchoTituloDisponible);
+
+                        saltaLinea = textPainter.didExceedMaxLines;
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Expanded(
-                            child: Text(
-                              titulo,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.onSurface,
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: saltaLinea
+                                    ? Text.rich(
+                                        TextSpan(
+                                          text: titulo,
+                                          style: titleStyle,
+                                          children: [
+                                            TextSpan(
+                                              text: ' • ',
+                                              style: theme.textTheme.bodySmall?.copyWith(
+                                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                                fontWeight: FontWeight.w400,
+                                              ),
+                                            ),
+                                            TextSpan(
+                                              text: subtitulo,
+                                              style: theme.textTheme.bodySmall?.copyWith(
+                                                color: colorScheme.onSurfaceVariant,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        maxLines: tituloMaxLines,
+                                        overflow: tituloMaxLines != null
+                                            ? TextOverflow.ellipsis
+                                            : null,
+                                      )
+                                    : Text(
+                                        titulo,
+                                        style: titleStyle,
+                                        maxLines: tituloMaxLines,
+                                        overflow: tituloMaxLines != null
+                                            ? TextOverflow.ellipsis
+                                            : null,
+                                      ),
+                              ),
+                              if (badge != null) ...[
+                                const SizedBox(width: 8),
+                                badge!,
+                              ],
+                            ],
+                          ),
+                          if (!saltaLinea && subtitulo != null && subtitulo!.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              subtitulo!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w500,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          if (badge != null) ...[
-                            const SizedBox(width: 8),
-                            badge!,
+                          ],
+                          if (detalle != null && detalle!.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              detalle!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                          if (pie != null) ...[
+                            const SizedBox(height: 5),
+                            pie!,
                           ],
                         ],
-                      ),
-                      if (subtitulo != null && subtitulo!.isNotEmpty) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          subtitulo!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                      if (detalle != null && detalle!.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          detalle!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                            fontSize: 11,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
+                      );
+                    },
                   ),
                 ),
 

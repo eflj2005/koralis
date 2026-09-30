@@ -391,8 +391,32 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                     detalle: cliente.correo.isNotEmpty
                                         ? '${cliente.correo} • ${cliente.telefono}'
                                         : cliente.telefono,
-                                    textoAvatar: cliente.nombre,
                                     colorAcento: colorScheme.secondary,
+                                    fusionarSubtituloSiMultilinea: true,
+                                    pie: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            'Disponible: ',
+                                            style: theme.textTheme.bodySmall?.copyWith(
+                                              color: colorScheme.onSurfaceVariant,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                          Text(
+                                            '\$0',
+                                            style: theme.textTheme.titleMedium?.copyWith(
+                                              color: colorScheme.primary,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 15,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                     badge: AppBadge(
                                       texto: cliente.estado,
                                       color: esActivo ? Colors.green : colorScheme.outline,
@@ -409,22 +433,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                             children: [
                                               Row(
                                                 children: [
-                                                  CircleAvatar(
-                                                    radius: 26,
-                                                    backgroundColor: colorScheme.secondary
-                                                        .withValues(alpha: 0.15),
-                                                    child: Text(
-                                                      cliente.nombre.isNotEmpty
-                                                          ? cliente.nombre[0].toUpperCase()
-                                                          : '?',
-                                                      style: TextStyle(
-                                                        color: colorScheme.secondary,
-                                                        fontWeight: FontWeight.bold,
-                                                        fontSize: 20,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 14),
                                                   Expanded(
                                                     child: Column(
                                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -475,6 +483,19 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                                 subtitle: Text(cliente.telefono.isNotEmpty
                                                     ? cliente.telefono
                                                     : 'No registrado'),
+                                              ),
+                                              ListTile(
+                                                dense: true,
+                                                leading: const Icon(Icons.account_balance_wallet_outlined),
+                                                title: const Text('Disponible'),
+                                                subtitle: Text(
+                                                  '\$0',
+                                                  style: TextStyle(
+                                                    color: colorScheme.primary,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 15,
+                                                  ),
+                                                ),
                                               ),
                                               if (cliente.observacion.isNotEmpty)
                                                 ListTile(
