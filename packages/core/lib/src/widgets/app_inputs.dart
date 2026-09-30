@@ -58,6 +58,12 @@ class AppTextField extends StatefulWidget {
   /// Radio de curvatura para redondear ligeramente las esquinas del campo de texto (por defecto 12 px).
   final BorderRadius borderRadius;
 
+  /// Número máximo de líneas que puede ocupar el campo (por defecto 1).
+  final int? maxLines;
+
+  /// Número mínimo de líneas visibles que ocupa el campo.
+  final int? minLines;
+
   const AppTextField({
     super.key,
     this.label,
@@ -71,6 +77,8 @@ class AppTextField extends StatefulWidget {
     this.textCapitalization = TextCapitalization.none,
     this.fillColor = Colors.white,
     this.borderRadius = const BorderRadius.all(Radius.circular(12.0)),
+    this.maxLines = 1,
+    this.minLines,
   });
 
   @override
@@ -113,11 +121,15 @@ class _AppTextFieldState extends State<AppTextField> {
       keyboardType: widget.tipoTeclado,
       textCapitalization: widget.textCapitalization,
       validator: widget.validator,
+      maxLines: widget.esOscuro ? 1 : widget.maxLines,
+      minLines: widget.esOscuro ? 1 : widget.minLines,
       style: TextStyle(
         color: theme.colorScheme.onSurface,
         fontFamilyFallback: fuentesRespaldo,
       ),
       decoration: InputDecoration(
+        alignLabelWithHint: (widget.maxLines != null && widget.maxLines! > 1) ||
+            (widget.minLines != null && widget.minLines! > 1),
         isDense: true,
         filled: true,
         fillColor: widget.fillColor,
