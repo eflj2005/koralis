@@ -194,7 +194,7 @@ void main() {
       // Verificar que se abrió el bottom sheet de detalle
       expect(find.text('Período de Inversión'), findsOneWidget);
       expect(find.text('Rendimientos Brutos'), findsOneWidget);
-      expect(find.text('Estado del Instrumento'), findsOneWidget);
+      expect(find.text('Activo'), findsWidgets);
       expect(find.text('Editar Instrumento'), findsOneWidget);
     });
   });

@@ -47,7 +47,8 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
     InstrumentRepository obtenerRepositorio() =>
         repo ??= InstrumentRepositoryImpl();
 
-    _getInstrumentsUseCase = widget.getInstrumentsUseCase ??
+    _getInstrumentsUseCase =
+        widget.getInstrumentsUseCase ??
         GetInstrumentsUseCase(obtenerRepositorio());
     _getProfileUseCase =
         widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
@@ -79,11 +80,13 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
   }
 
   void _navegarNuevoInstrumento(BuildContext context) async {
-    final bool? creado = await Navigator.pushNamed(
-      context,
-      '/instrument_form',
-      arguments: InstrumentFormArgs(user: widget.user),
-    ) as bool?;
+    final bool? creado =
+        await Navigator.pushNamed(
+              context,
+              '/instrument_form',
+              arguments: InstrumentFormArgs(user: widget.user),
+            )
+            as bool?;
 
     if (creado == true) {
       _cargarDatos();
@@ -94,14 +97,16 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
     BuildContext context,
     Instrument instrumento,
   ) async {
-    final bool? editado = await Navigator.pushNamed(
-      context,
-      '/instrument_form',
-      arguments: InstrumentFormArgs(
-        user: widget.user,
-        instrument: instrumento,
-      ),
-    ) as bool?;
+    final bool? editado =
+        await Navigator.pushNamed(
+              context,
+              '/instrument_form',
+              arguments: InstrumentFormArgs(
+                user: widget.user,
+                instrument: instrumento,
+              ),
+            )
+            as bool?;
 
     if (editado == true) {
       _cargarDatos();
@@ -122,10 +127,13 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                 CircleAvatar(
                   radius: 28,
                   backgroundImage:
-                      (profile?.avatarPath != null && profile!.avatarPath.isNotEmpty)
-                          ? AssetImage(profile.avatarPath)
-                          : null,
-                  child: (profile?.avatarPath == null || profile!.avatarPath.isEmpty)
+                      (profile?.avatarPath != null &&
+                          profile!.avatarPath.isNotEmpty)
+                      ? AssetImage(profile.avatarPath)
+                      : null,
+                  child:
+                      (profile?.avatarPath == null ||
+                          profile!.avatarPath.isEmpty)
                       ? const Icon(Icons.person, size: 30)
                       : null,
                 ),
@@ -136,16 +144,15 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                     children: [
                       Text(
                         widget.user.nombre,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         widget.user.correo,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -167,7 +174,9 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                 Navigator.pop(context);
                 showAppModalBottomSheet(
                   context,
-                  child: ForgotPasswordFormSheet(initialEmail: widget.user.correo),
+                  child: ForgotPasswordFormSheet(
+                    initialEmail: widget.user.correo,
+                  ),
                 );
               },
             ),
@@ -200,7 +209,9 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
       builder: (dialogContext) {
         final theme = Theme.of(dialogContext);
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: Row(
             children: [
               Icon(Icons.logout_rounded, color: theme.colorScheme.error),
@@ -208,7 +219,9 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
               const Expanded(child: Text('Cerrar sesión')),
             ],
           ),
-          content: const Text('¿Estás seguro de que deseas salir de tu cuenta?'),
+          content: const Text(
+            '¿Estás seguro de que deseas salir de tu cuenta?',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
@@ -221,7 +234,11 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
               ),
               onPressed: () {
                 Navigator.pop(dialogContext);
-                Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/',
+                  (route) => false,
+                );
               },
               child: const Text('Salir'),
             ),
@@ -241,7 +258,11 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
         icono: Icons.people_alt_outlined,
         colorAcento: colorScheme.secondary,
         onTap: () {
-          Navigator.pushReplacementNamed(context, '/clients', arguments: widget.user);
+          Navigator.pushReplacementNamed(
+            context,
+            '/clients',
+            arguments: widget.user,
+          );
         },
       ),
       AppFolderTabItem(
@@ -257,7 +278,10 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
         icono: Icons.receipt_long_outlined,
         colorAcento: colorScheme.tertiary,
         onTap: () {
-          showUnderConstructionDialog(context, accion: 'Módulo de Transacciones');
+          showUnderConstructionDialog(
+            context,
+            accion: 'Módulo de Transacciones',
+          );
         },
       ),
       AppFolderTabItem(
@@ -316,7 +340,8 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                     ),
                     const SizedBox(width: 6),
                     AppBadge(
-                      texto: '${instrumento.tasaIea.toStringAsFixed(2)}% I.E.A.',
+                      texto:
+                          '${instrumento.tasaIea.toStringAsFixed(2)}% I.E.A.',
                       color: colorScheme.primary,
                     ),
                   ],
@@ -327,25 +352,6 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
             const Divider(),
             const SizedBox(height: 8),
 
-            ListTile(
-              dense: true,
-              leading: Icon(
-                Icons.flag_outlined,
-                color: instrumento.estado == 'Activo'
-                    ? Colors.green
-                    : Colors.grey.shade600,
-              ),
-              title: const Text('Estado del Instrumento'),
-              subtitle: Text(
-                instrumento.estado,
-                style: TextStyle(
-                  color: instrumento.estado == 'Activo'
-                      ? Colors.green.shade800
-                      : Colors.grey.shade700,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
             ListTile(
               dense: true,
               leading: const Icon(Icons.date_range_outlined),
@@ -381,7 +387,9 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
             ListTile(
               dense: true,
               leading: const Icon(Icons.price_check_rounded),
-              title: Text('Retención en la Fuente (${instrumento.retencionPorcentaje.toStringAsFixed(2)}%)'),
+              title: Text(
+                'Retención en la Fuente (${instrumento.retencionPorcentaje.toStringAsFixed(2)}%)',
+              ),
               subtitle: Text(
                 '- ${_formatearMoneda(instrumento.retencionValor)}',
                 style: TextStyle(color: colorScheme.error),
@@ -450,7 +458,8 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                       children: [
                         AppHeaderTitle(
                           titulo: 'Instrumentos',
-                          subtitulo: 'Portafolio de colocaciones y rendimientos',
+                          subtitulo:
+                              'Portafolio de colocaciones y rendimientos',
                           onBack: () => Navigator.pushReplacementNamed(
                             context,
                             '/dashboard',
@@ -487,21 +496,26 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                                       Icon(
                                         Icons.paid_outlined,
                                         size: 64,
-                                        color: colorScheme.primary.withValues(alpha: 0.35),
+                                        color: colorScheme.primary.withValues(
+                                          alpha: 0.35,
+                                        ),
                                       ),
                                       const SizedBox(height: 14),
                                       Text(
                                         'No hay instrumentos registrados',
-                                        style: theme.textTheme.titleMedium?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
                                         'Presiona el botón (+) para agregar tu primera colocación.',
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          color: colorScheme.onSurfaceVariant,
-                                        ),
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              color:
+                                                  colorScheme.onSurfaceVariant,
+                                            ),
                                         textAlign: TextAlign.center,
                                       ),
                                     ],
@@ -528,17 +542,18 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                                     colorAcento: colorScheme.primary,
                                     fusionarSubtituloSiMultilinea: true,
                                     badge: AppBadge(
-                                      texto: '${inst.tasaIea.toStringAsFixed(2)}% I.E.A.',
-                                      color: colorScheme.primary,
+                                      texto: inst.estado,
+                                      color: inst.estado == 'Activo'
+                                          ? Colors.green
+                                          : Colors.grey.shade600,
                                     ),
                                     pie: Row(
                                       children: [
-                                        // Badge indicador del estado operativo (Activo / Cerrado)
+                                        // Badge indicador de la tasa pactada (% I.E.A.)
                                         AppBadge(
-                                          texto: inst.estado,
-                                          color: inst.estado == 'Activo'
-                                              ? Colors.green
-                                              : Colors.grey.shade600,
+                                          texto:
+                                              '${inst.tasaIea.toStringAsFixed(2)}% I.E.A.',
+                                          color: colorScheme.primary,
                                         ),
                                         const SizedBox(width: 8),
                                         Expanded(
@@ -550,16 +565,24 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                                               children: [
                                                 Text(
                                                   'Valor Final Rend: ',
-                                                  style: theme.textTheme.bodySmall?.copyWith(
-                                                    color: colorScheme.onSurfaceVariant,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodySmall
+                                                      ?.copyWith(
+                                                        color: colorScheme
+                                                            .onSurfaceVariant,
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
                                                 ),
                                                 Text(
-                                                  _formatearMoneda(inst.valorFinalRend),
+                                                  _formatearMoneda(
+                                                    inst.valorFinalRend,
+                                                  ),
                                                   style: TextStyle(
-                                                    color: Colors.green.shade800,
+                                                    color:
+                                                        Colors.green.shade800,
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 15,
                                                   ),
@@ -570,7 +593,8 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                                         ),
                                       ],
                                     ),
-                                    onTap: () => _mostrarFichaRapida(context, inst),
+                                    onTap: () =>
+                                        _mostrarFichaRapida(context, inst),
                                   );
                                 },
                               );
@@ -590,9 +614,10 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                 builder: (context, snapshot) {
                   final profile = snapshot.data;
                   final imageProvider =
-                      (profile?.avatarPath != null && profile!.avatarPath.isNotEmpty)
-                          ? AssetImage(profile.avatarPath) as ImageProvider
-                          : null;
+                      (profile?.avatarPath != null &&
+                          profile!.avatarPath.isNotEmpty)
+                      ? AssetImage(profile.avatarPath) as ImageProvider
+                      : null;
 
                   return AppFloatingProfileBadge(
                     proveedorImagen: imageProvider,

@@ -989,46 +989,114 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                   ),
                                   const SizedBox(height: 18),
 
-                                  // --- Selector de Estado del Instrumento ---
-                                  AppDropdownField<String>(
-                                    label: 'Estado del Instrumento',
-                                    value: _estado,
-                                    icono: Icons.flag_outlined,
-                                    items: const [
-                                      DropdownMenuItem(
-                                        value: 'Activo',
-                                        child: Row(
+                                  // --- Selector de Estado Operativo (Activo / Cerrado) ---
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.surface,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: colorScheme.outline.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
                                           children: [
                                             Icon(
-                                              Icons.circle,
-                                              size: 10,
-                                              color: Colors.green,
+                                              Icons.verified_outlined,
+                                              color: colorScheme.primary,
+                                              size: 20,
                                             ),
-                                            SizedBox(width: 8),
-                                            Text('Activo'),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'Estado Operativo',
+                                                style: theme.textTheme.bodyMedium?.copyWith(
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
                                           ],
                                         ),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 'Cerrado',
-                                        child: Row(
+                                        const SizedBox(height: 10),
+                                        Row(
                                           children: [
-                                            Icon(
-                                              Icons.circle,
-                                              size: 10,
-                                              color: Colors.grey,
+                                            // Botón interactivo para estado 'Activo'
+                                            Expanded(
+                                              child: InkWell(
+                                                onTap: () => setState(() => _estado = 'Activo'),
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: AnimatedContainer(
+                                                  duration: const Duration(milliseconds: 150),
+                                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: _estado == 'Activo'
+                                                        ? Colors.green.withValues(alpha: 0.18)
+                                                        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    border: Border.all(
+                                                      color: _estado == 'Activo'
+                                                          ? Colors.green
+                                                          : Colors.transparent,
+                                                      width: 1.5,
+                                                    ),
+                                                  ),
+                                                  alignment: Alignment.center,
+                                                  child: Text(
+                                                    'Activo',
+                                                    style: TextStyle(
+                                                      color: _estado == 'Activo'
+                                                          ? Colors.green.shade800
+                                                          : colorScheme.onSurfaceVariant,
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
                                             ),
-                                            SizedBox(width: 8),
-                                            Text('Cerrado'),
+                                            const SizedBox(width: 10),
+                                            // Botón interactivo para estado 'Cerrado'
+                                            Expanded(
+                                              child: InkWell(
+                                                onTap: () => setState(() => _estado = 'Cerrado'),
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: AnimatedContainer(
+                                                  duration: const Duration(milliseconds: 150),
+                                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: _estado == 'Cerrado'
+                                                        ? Colors.grey.withValues(alpha: 0.22)
+                                                        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    border: Border.all(
+                                                      color: _estado == 'Cerrado'
+                                                          ? Colors.grey.shade600
+                                                          : Colors.transparent,
+                                                      width: 1.5,
+                                                    ),
+                                                  ),
+                                                  alignment: Alignment.center,
+                                                  child: Text(
+                                                    'Cerrado',
+                                                    style: TextStyle(
+                                                      color: _estado == 'Cerrado'
+                                                          ? Colors.grey.shade800
+                                                          : colorScheme.onSurfaceVariant,
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
                                           ],
                                         ),
-                                      ),
-                                    ],
-                                    onChanged: (nuevoEstado) {
-                                      if (nuevoEstado != null) {
-                                        setState(() => _estado = nuevoEstado);
-                                      }
-                                    },
+                                      ],
+                                    ),
                                   ),
                                   const SizedBox(height: 14),
 

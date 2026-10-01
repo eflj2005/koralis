@@ -109,7 +109,7 @@ void main() {
       expect(find.text('Rendimiento T. Proyec. (\$)'), findsOneWidget);
       expect(find.text('Retención %'), findsOneWidget);
       expect(find.text('Retención (\$):'), findsOneWidget);
-      expect(find.text('Estado del Instrumento'), findsOneWidget);
+      expect(find.text('Estado Operativo'), findsOneWidget);
       expect(find.text('Observación'), findsOneWidget);
 
       // Resumen Financiero Dinámico
@@ -269,17 +269,17 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      final estadoFinder = find.widgetWithText(AppDropdownField<String>, 'Estado del Instrumento');
+      final estadoFinder = find.text('Estado Operativo');
       expect(estadoFinder, findsOneWidget);
 
       await tester.ensureVisible(estadoFinder);
       await tester.pumpAndSettle();
 
-      await tester.tap(estadoFinder);
-      await tester.pumpAndSettle();
+      expect(find.text('Activo'), findsOneWidget);
+      expect(find.text('Cerrado'), findsOneWidget);
 
-      expect(find.text('Cerrado').last, findsOneWidget);
-      await tester.tap(find.text('Cerrado').last);
+      // Tocar el botón segmentado interactivo de 'Cerrado'
+      await tester.tap(find.text('Cerrado'));
       await tester.pumpAndSettle();
 
       expect(find.text('Cerrado'), findsOneWidget);
