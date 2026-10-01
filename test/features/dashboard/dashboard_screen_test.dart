@@ -1,12 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:core/core.dart';
-import 'package:koralis_app/app/styles.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/repositories/profile_repository.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
+
+const _transparentImage = <int>[
+  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+  0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+  0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+  0x42, 0x60, 0x82,
+];
+
+class TestAssetBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) async {
+    if (key == 'AssetManifest.bin') {
+      final ByteData data = const StandardMessageCodec().encodeMessage(<String, Object?>{})!;
+      return data;
+    }
+    if (key == 'AssetManifest.json') {
+      final bytes = Uint8List.fromList('{}'.codeUnits);
+      return ByteData.view(bytes.buffer);
+    }
+    return ByteData.view(Uint8List.fromList(_transparentImage).buffer);
+  }
+}
 
 /// Implementación mock del repositorio de perfil para pruebas independientes
 class MockProfileRepository implements ProfileRepository {
@@ -20,6 +43,20 @@ class MockProfileRepository implements ProfileRepository {
       correo: 'carlos@koralis.com',
     );
   }
+}
+
+Widget _crearWidgetPrueba({
+  required Widget child,
+  Map<String, WidgetBuilder>? routes,
+}) {
+  return DefaultAssetBundle(
+    bundle: TestAssetBundle(),
+    child: MaterialApp(
+      theme: ThemeData.light().copyWith(splashFactory: InkRipple.splashFactory),
+      routes: routes ?? const <String, WidgetBuilder>{},
+      home: child,
+    ),
+  );
 }
 
 void main() {
@@ -46,9 +83,17 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
 
         await tester.pumpWidget(
-          MaterialApp(
-            theme: AppStyles.theme,
-            home: DashboardScreen(
+          _crearWidgetPrueba(
+            routes: {
+              '/instruments': (context) => Scaffold(
+                    appBar: AppBar(title: const Text('Pantalla Instrumentos')),
+                    body: ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Volver'),
+                    ),
+                  ),
+            },
+            child: DashboardScreen(
               user: testUser,
               getProfileUseCase: mockUseCase,
             ),
@@ -125,21 +170,24 @@ void main() {
         // Guardar la coordenada horizontal X antes de la interacción
         final dxAntesDeSeleccionar = tester.getTopLeft(pestanaInstrumentos).dx;
 
-        // Probar interacción con la pestaña 'Instrumentos' (módulo en construcción)
+        // Probar interacción con la pestaña 'Instrumentos'
         await tester.tap(find.text('Instrumentos'));
         await tester.pumpAndSettle();
 
-        // Verificar que la pestaña no se haya desplazado horizontalmente (posición estática)
-        final dxDespuesDeSeleccionar = tester.getTopLeft(pestanaInstrumentos).dx;
+        // Debe haber navegado al módulo de instrumentos
+        expect(find.text('Pantalla Instrumentos'), findsOneWidget);
+
+        // Volver al Dashboard
+        await tester.tap(find.text('Volver'));
+        await tester.pumpAndSettle();
+
+        // Verificar que la pestaña mantenga su posición horizontal fija
+        final dxDespuesDeRetornar = tester.getTopLeft(pestanaInstrumentos).dx;
         expect(
-          dxDespuesDeSeleccionar,
+          dxDespuesDeRetornar,
           equals(dxAntesDeSeleccionar),
           reason: 'La pestaña debe mantener su posición horizontal fija al seleccionarse',
         );
-
-        // Debe desplegar el modal de construcción correspondiente
-        expect(find.text('En construcción'), findsOneWidget);
-        expect(find.textContaining('Módulo de Instrumentos'), findsOneWidget);
       },
     );
 
@@ -152,9 +200,8 @@ void main() {
           tester.view.devicePixelRatio = 1.0;
 
           await tester.pumpWidget(
-            MaterialApp(
-              theme: AppStyles.theme,
-              home: DashboardScreen(
+            _crearWidgetPrueba(
+              child: DashboardScreen(
                 user: testUser,
                 getProfileUseCase: mockUseCase,
               ),
@@ -178,9 +225,8 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
 
         await tester.pumpWidget(
-          MaterialApp(
-            theme: AppStyles.theme,
-            home: DashboardScreen(
+          _crearWidgetPrueba(
+            child: DashboardScreen(
               user: testUser,
               getProfileUseCase: mockUseCase,
             ),
@@ -220,8 +266,7 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
 
         await tester.pumpWidget(
-          MaterialApp(
-            theme: AppStyles.theme,
+          _crearWidgetPrueba(
             routes: {
               '/clients': (context) => Scaffold(
                     appBar: AppBar(title: const Text('Pantalla Clientes')),
@@ -231,7 +276,7 @@ void main() {
                     ),
                   ),
             },
-            home: DashboardScreen(
+            child: DashboardScreen(
               user: testUser,
               getProfileUseCase: mockUseCase,
             ),
@@ -251,8 +296,8 @@ void main() {
         await tester.tap(find.text('Volver'));
         await tester.pumpAndSettle();
 
-        // Debe haber regresado al Dashboard
-        expect(find.text('Gestión de Clientes'), findsOneWidget);
+        // Debe haber regresado al Dashboard y mostrar la tarjeta de bienvenida
+        expect(find.text('¡Bienvenido!'), findsOneWidget);
 
         // Verificar que el índice seleccionado en AppFolderTabBar sea null (desactivada)
         final folderTabBarFinder = find.byType(AppFolderTabBar);
