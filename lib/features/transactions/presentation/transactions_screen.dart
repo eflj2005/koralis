@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:core/core.dart' hide Transaction;
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
+import 'package:koralis_app/features/clients/domain/entities/client.dart';
+import 'package:koralis_app/features/clients/domain/usecases/get_clients_usecase.dart';
+import 'package:koralis_app/features/clients/data/repositories/client_repository_impl.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
 import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
@@ -16,12 +19,14 @@ class TransactionsScreen extends StatefulWidget {
   final User user;
   final GetTransactionsUseCase? getTransactionsUseCase;
   final GetProfileUseCase? getProfileUseCase;
+  final GetClientsUseCase? getClientsUseCase;
 
   const TransactionsScreen({
     super.key,
     required this.user,
     this.getTransactionsUseCase,
     this.getProfileUseCase,
+    this.getClientsUseCase,
   });
 
   @override
@@ -33,15 +38,25 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   late final GetTransactionsUseCase _getTransactionsUseCase;
   late final GetProfileUseCase _getProfileUseCase;
+  late final GetClientsUseCase _getClientsUseCase;
 
   Future<List<Transaction>>? _transaccionesFuture;
   Future<Profile>? _profileFuture;
+  List<Client> _clientesDisponibles = [];
 
-  TransactionType? _filtroTipo; // null = Todas
+  // Filtros reactivos
+  String? _filtroClienteId; // null = Todos los clientes
+  TransactionType? _filtroTipo; // null = Todos los tipos
+  late DateTime _fechaInicial;
+  late DateTime _fechaFinal;
 
   @override
   void initState() {
     super.initState();
+    final ahora = DateTime.now();
+    _fechaInicial = DateTime(ahora.year, ahora.month, 1);
+    _fechaFinal = DateTime(ahora.year, ahora.month + 1, 0, 23, 59, 59);
+
     TransactionRepository? repo;
     TransactionRepository obtenerRepositorio() =>
         repo ??= TransactionRepositoryImpl();
@@ -50,6 +65,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         GetTransactionsUseCase(obtenerRepositorio());
     _getProfileUseCase =
         widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
+    _getClientsUseCase = widget.getClientsUseCase ??
+        GetClientsUseCase(ClientRepositoryImpl());
 
     _cargarDatos();
   }
@@ -59,6 +76,97 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       _transaccionesFuture = _getTransactionsUseCase.execute();
       _profileFuture = _getProfileUseCase.execute(widget.user.id);
     });
+    _cargarClientes();
+  }
+
+  Future<void> _cargarClientes() async {
+    try {
+      final clientes = await _getClientsUseCase.execute();
+      if (mounted) {
+        setState(() {
+          _clientesDisponibles = clientes;
+        });
+      }
+    } catch (_) {
+      // Ignorar fallas de conexión seguras
+    }
+  }
+
+  bool _esMesActual() {
+    final ahora = DateTime.now();
+    final primerDia = DateTime(ahora.year, ahora.month, 1);
+    final ultimoDia = DateTime(ahora.year, ahora.month + 1, 0, 23, 59, 59);
+
+    return _fechaInicial.year == primerDia.year &&
+        _fechaInicial.month == primerDia.month &&
+        _fechaInicial.day == primerDia.day &&
+        _fechaFinal.year == ultimoDia.year &&
+        _fechaFinal.month == ultimoDia.month &&
+        _fechaFinal.day == ultimoDia.day;
+  }
+
+  void _restablecerMesActual() {
+    final ahora = DateTime.now();
+    setState(() {
+      _fechaInicial = DateTime(ahora.year, ahora.month, 1);
+      _fechaFinal = DateTime(ahora.year, ahora.month + 1, 0, 23, 59, 59);
+    });
+  }
+
+  Future<void> _seleccionarFechaInicial(BuildContext context) async {
+    final DateTime? seleccionada = await showDatePicker(
+      context: context,
+      initialDate: _fechaInicial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      locale: const Locale('es', 'CO'),
+    );
+
+    if (seleccionada != null) {
+      final normalizada =
+          DateTime(seleccionada.year, seleccionada.month, seleccionada.day);
+      if (normalizada.isAfter(_fechaFinal)) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('La fecha inicial no puede ser posterior a la fecha final'),
+          ),
+        );
+        return;
+      }
+      setState(() => _fechaInicial = normalizada);
+    }
+  }
+
+  Future<void> _seleccionarFechaFinal(BuildContext context) async {
+    final DateTime? seleccionada = await showDatePicker(
+      context: context,
+      initialDate: _fechaFinal,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      locale: const Locale('es', 'CO'),
+    );
+
+    if (seleccionada != null) {
+      final normalizada = DateTime(
+        seleccionada.year,
+        seleccionada.month,
+        seleccionada.day,
+        23,
+        59,
+        59,
+      );
+      if (normalizada.isBefore(_fechaInicial)) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('La fecha final no puede ser anterior a la fecha inicial'),
+          ),
+        );
+        return;
+      }
+      setState(() => _fechaFinal = normalizada);
+    }
   }
 
   String _formatearFecha(DateTime fecha) {
@@ -446,53 +554,232 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           ),
                         ),
 
-                        // Barra de filtros horizontales
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
+                        // Panel de Filtros: Fila 1 (Dropdowns Cliente y Tipo) + Fila 2 (Rango Fechas)
+                        Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              _buildChipFiltro(
-                                etiqueta: 'Todas',
-                                seleccionado: _filtroTipo == null,
-                                onTap: () => setState(() => _filtroTipo = null),
+                              // Fila 1: Cliente y Tipo
+                              Row(
+                                children: [
+                                  // Selector de Cliente
+                                  Expanded(
+                                    child: DropdownButtonFormField<String?>(
+                                      isExpanded: true,
+                                      initialValue: _filtroClienteId,
+                                      decoration: InputDecoration(
+                                        labelText: 'Cliente',
+                                        isDense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
+                                        ),
+                                        prefixIcon: const Icon(
+                                          Icons.person_outline_rounded,
+                                          size: 18,
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        filled: true,
+                                        fillColor: colorScheme.surface,
+                                      ),
+                                      items: [
+                                        const DropdownMenuItem<String?>(
+                                          value: null,
+                                          child: Text(
+                                            'Todos los clientes',
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(fontSize: 13),
+                                          ),
+                                        ),
+                                        ..._clientesDisponibles.map(
+                                          (c) => DropdownMenuItem<String?>(
+                                            value: c.id,
+                                            child: Text(
+                                              c.nombre,
+                                              overflow: TextOverflow.ellipsis,
+                                              style:
+                                                  const TextStyle(fontSize: 13),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      onChanged: (val) =>
+                                          setState(() => _filtroClienteId = val),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Selector de Tipo
+                                  Expanded(
+                                    child: DropdownButtonFormField<TransactionType?>(
+                                      isExpanded: true,
+                                      initialValue: _filtroTipo,
+                                      decoration: InputDecoration(
+                                        labelText: 'Tipo',
+                                        isDense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
+                                        ),
+                                        prefixIcon: const Icon(
+                                          Icons.filter_list_rounded,
+                                          size: 18,
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        filled: true,
+                                        fillColor: colorScheme.surface,
+                                      ),
+                                      items: [
+                                        const DropdownMenuItem<TransactionType?>(
+                                          value: null,
+                                          child: Text(
+                                            'Todos los tipos',
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(fontSize: 13),
+                                          ),
+                                        ),
+                                        ...TransactionType.values.map(
+                                          (tipo) =>
+                                              DropdownMenuItem<TransactionType?>(
+                                            value: tipo,
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  tipo.icono,
+                                                  size: 16,
+                                                  color: tipo.colorSugerido,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Flexible(
+                                                  child: Text(
+                                                    tipo.etiqueta,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      onChanged: (val) =>
+                                          setState(() => _filtroTipo = val),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              _buildChipFiltro(
-                                etiqueta: 'Recargas',
-                                seleccionado: _filtroTipo == TransactionType.recarga,
-                                colorAcento: TransactionType.recarga.colorSugerido,
-                                onTap: () => setState(
-                                  () => _filtroTipo = TransactionType.recarga,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              _buildChipFiltro(
-                                etiqueta: 'Inversiones',
-                                seleccionado: _filtroTipo == TransactionType.inversion,
-                                colorAcento: TransactionType.inversion.colorSugerido,
-                                onTap: () => setState(
-                                  () => _filtroTipo = TransactionType.inversion,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              _buildChipFiltro(
-                                etiqueta: 'Retornos',
-                                seleccionado: _filtroTipo == TransactionType.retorno,
-                                colorAcento: TransactionType.retorno.colorSugerido,
-                                onTap: () => setState(
-                                  () => _filtroTipo = TransactionType.retorno,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              _buildChipFiltro(
-                                etiqueta: 'Retiros',
-                                seleccionado: _filtroTipo == TransactionType.retiro,
-                                colorAcento: TransactionType.retiro.colorSugerido,
-                                onTap: () => setState(
-                                  () => _filtroTipo = TransactionType.retiro,
-                                ),
+                              const SizedBox(height: 8),
+
+                              // Fila 2: Rango de Fechas (Desde / Hasta) y botón restablecer
+                              Row(
+                                children: [
+                                  // Fecha Desde
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () =>
+                                          _seleccionarFechaInicial(context),
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: InputDecorator(
+                                        decoration: InputDecoration(
+                                          labelText: 'Desde',
+                                          isDense: true,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 8,
+                                          ),
+                                          prefixIcon: const Icon(
+                                            Icons.calendar_today_outlined,
+                                            size: 16,
+                                          ),
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          filled: true,
+                                          fillColor: colorScheme.surface,
+                                        ),
+                                        child: Text(
+                                          _formatearFecha(_fechaInicial),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: colorScheme.onSurface,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Fecha Hasta
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () =>
+                                          _seleccionarFechaFinal(context),
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: InputDecorator(
+                                        decoration: InputDecoration(
+                                          labelText: 'Hasta',
+                                          isDense: true,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 8,
+                                          ),
+                                          prefixIcon: const Icon(
+                                            Icons.event_outlined,
+                                            size: 16,
+                                          ),
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          filled: true,
+                                          fillColor: colorScheme.surface,
+                                        ),
+                                        child: Text(
+                                          _formatearFecha(_fechaFinal),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: colorScheme.onSurface,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  // Botón restablecer al mes actual
+                                  IconButton(
+                                    tooltip: 'Restablecer al mes actual',
+                                    icon: const Icon(
+                                      Icons.restart_alt_rounded,
+                                      size: 20,
+                                    ),
+                                    onPressed: _restablecerMesActual,
+                                    visualDensity: VisualDensity.compact,
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: colorScheme
+                                          .surfaceContainerHighest
+                                          .withValues(alpha: 0.4),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -518,12 +805,46 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                 );
                               }
 
-                              final List<Transaction> todas = snapshot.data ?? [];
-                              final List<Transaction> filtradas = _filtroTipo == null
-                                  ? todas
-                                  : todas.where((t) => t.tipo == _filtroTipo).toList();
+                              final List<Transaction> todas =
+                                  snapshot.data ?? [];
+                              final List<Transaction> filtradas = todas.where((t) {
+                                final coincideCliente =
+                                    _filtroClienteId == null ||
+                                        t.clienteId == _filtroClienteId;
+                                final coincideTipo = _filtroTipo == null ||
+                                    t.tipo == _filtroTipo;
+
+                                // Comparación normalizada por fecha (inclusiva a nivel de día)
+                                final fechaTx = DateTime(
+                                  t.fecha.year,
+                                  t.fecha.month,
+                                  t.fecha.day,
+                                );
+                                final inicio = DateTime(
+                                  _fechaInicial.year,
+                                  _fechaInicial.month,
+                                  _fechaInicial.day,
+                                );
+                                final fin = DateTime(
+                                  _fechaFinal.year,
+                                  _fechaFinal.month,
+                                  _fechaFinal.day,
+                                );
+                                final coincideFecha =
+                                    !fechaTx.isBefore(inicio) &&
+                                        !fechaTx.isAfter(fin);
+
+                                return coincideCliente &&
+                                    coincideTipo &&
+                                    coincideFecha;
+                              }).toList();
 
                               if (filtradas.isEmpty) {
+                                final bool hayFiltrosActivos =
+                                    _filtroClienteId != null ||
+                                        _filtroTipo != null ||
+                                        !_esMesActual();
+
                                 return Center(
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
@@ -531,17 +852,20 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                       Icon(
                                         Icons.receipt_long_outlined,
                                         size: 64,
-                                        color: colorScheme.primary.withValues(alpha: 0.35),
+                                        color: colorScheme.primary
+                                            .withValues(alpha: 0.35),
                                       ),
                                       const SizedBox(height: 14),
                                       Text(
-                                        _filtroTipo == null
-                                            ? 'No hay transacciones registradas'
-                                            : 'No hay transacciones de tipo ${_filtroTipo!.etiqueta}',
-                                        style: theme.textTheme.titleMedium?.copyWith(
+                                        hayFiltrosActivos
+                                            ? 'No se encontraron transacciones con los filtros seleccionados'
+                                            : 'No hay transacciones registradas',
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
                                           color: colorScheme.onSurfaceVariant,
                                           fontWeight: FontWeight.w600,
                                         ),
+                                        textAlign: TextAlign.center,
                                       ),
                                     ],
                                   ),
@@ -634,46 +958,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChipFiltro({
-    required String etiqueta,
-    required bool seleccionado,
-    required VoidCallback onTap,
-    Color? colorAcento,
-  }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final colorBase = colorAcento ?? colorScheme.primary;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: seleccionado
-              ? colorBase.withValues(alpha: 0.18)
-              : colorScheme.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: seleccionado
-                ? colorBase
-                : colorScheme.outline.withValues(alpha: 0.2),
-            width: seleccionado ? 1.5 : 1.0,
-          ),
-        ),
-        child: Text(
-          etiqueta,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: seleccionado ? FontWeight.bold : FontWeight.w500,
-            color: seleccionado ? colorBase : colorScheme.onSurfaceVariant,
-          ),
         ),
       ),
     );

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
+import 'package:koralis_app/features/clients/domain/entities/client.dart';
+import 'package:koralis_app/features/clients/domain/repositories/client_repository.dart';
+import 'package:koralis_app/features/clients/domain/usecases/get_clients_usecase.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/repositories/profile_repository.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
@@ -20,6 +23,17 @@ class MockProfileRepo implements ProfileRepository {
       correo: 'edwin@koralis.com',
     );
   }
+}
+
+class MockClientRepo implements ClientRepository {
+  final List<Client> clients;
+  MockClientRepo([this.clients = const []]);
+
+  @override
+  Future<List<Client>> getClients() async => clients;
+
+  @override
+  Future<void> addClient(Client client) async {}
 }
 
 class MockTransactionRepo implements TransactionRepository {
@@ -61,16 +75,37 @@ void main() {
     correo: 'edwin@koralis.com',
   );
 
-  group('TransactionsScreen - Visualización y gestión de transacciones', () {
+  final ahora = DateTime.now();
+
+  final testClients = [
+    Client(
+      id: 'c1',
+      nombre: 'Carlos Gómez',
+      documento: '12345678',
+      correo: 'carlos@test.com',
+      telefono: '3001234567',
+    ),
+    Client(
+      id: 'c2',
+      nombre: 'Mariana Duarte',
+      documento: '87654321',
+      correo: 'mariana@test.com',
+      telefono: '3109876543',
+    ),
+  ];
+
+  group('TransactionsScreen - Visualización y filtros combinados', () {
     testWidgets('Debe mostrar estado vacío cuando no existen transacciones', (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
+      tester.view.physicalSize = const Size(420, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final repo = MockTransactionRepo([]);
-      final getTransactions = GetTransactionsUseCase(repo);
+      final txRepo = MockTransactionRepo([]);
+      final clientRepo = MockClientRepo(testClients);
+      final getTransactions = GetTransactionsUseCase(txRepo);
       final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getClients = GetClientsUseCase(clientRepo);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -79,6 +114,7 @@ void main() {
             user: testUser,
             getTransactionsUseCase: getTransactions,
             getProfileUseCase: getProfile,
+            getClientsUseCase: getClients,
           ),
         ),
       );
@@ -90,8 +126,8 @@ void main() {
       expect(find.byType(FloatingActionButton), findsOneWidget);
     });
 
-    testWidgets('Debe renderizar la lista de transacciones con sus tarjetas y badges', (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
+    testWidgets('Debe renderizar la lista y los controles de filtro (Cliente, Tipo, Fechas)', (tester) async {
+      tester.view.physicalSize = const Size(420, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -102,7 +138,7 @@ void main() {
         clienteNombre: 'Carlos Gómez',
         tipo: TransactionType.recarga,
         valor: 2000000.0,
-        fecha: DateTime(2026, 3, 1),
+        fecha: DateTime(ahora.year, ahora.month, 5),
         observacion: 'Depósito por transferencia',
       );
 
@@ -112,13 +148,15 @@ void main() {
         clienteNombre: 'Mariana Duarte',
         tipo: TransactionType.retiro,
         valor: 500000.0,
-        fecha: DateTime(2026, 3, 2),
+        fecha: DateTime(ahora.year, ahora.month, 8),
         observacion: 'Retiro bancario',
       );
 
-      final repo = MockTransactionRepo([tx1, tx2]);
-      final getTransactions = GetTransactionsUseCase(repo);
+      final txRepo = MockTransactionRepo([tx1, tx2]);
+      final clientRepo = MockClientRepo(testClients);
+      final getTransactions = GetTransactionsUseCase(txRepo);
       final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getClients = GetClientsUseCase(clientRepo);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -127,6 +165,7 @@ void main() {
             user: testUser,
             getTransactionsUseCase: getTransactions,
             getProfileUseCase: getProfile,
+            getClientsUseCase: getClients,
           ),
         ),
       );
@@ -134,21 +173,23 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Verificar que se listan los nombres de los clientes
-      expect(find.textContaining('Carlos Gómez'), findsOneWidget);
-      expect(find.textContaining('Mariana Duarte'), findsOneWidget);
+      // Verificar controles de filtro
+      expect(find.text('Cliente'), findsOneWidget);
+      expect(find.text('Tipo'), findsOneWidget);
+      expect(find.text('Desde'), findsOneWidget);
+      expect(find.text('Hasta'), findsOneWidget);
 
-      // Verificar badges de tipo
-      expect(find.text('Recarga'), findsWidgets);
-      expect(find.text('Retiro'), findsWidgets);
+      // Verificar que se listan los nombres de los clientes
+      expect(find.textContaining('Carlos Gómez'), findsWidgets);
+      expect(find.textContaining('Mariana Duarte'), findsWidgets);
 
       // Verificar valores con signo formateado
       expect(find.textContaining('+ \$ 2.000.000,00'), findsOneWidget);
       expect(find.textContaining('- \$ 500.000,00'), findsOneWidget);
     });
 
-    testWidgets('Debe filtrar la lista al seleccionar un chip de tipo', (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
+    testWidgets('Debe filtrar la lista por tipo de transacción usando el dropdown', (tester) async {
+      tester.view.physicalSize = const Size(420, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -159,7 +200,7 @@ void main() {
         clienteNombre: 'Carlos Gómez',
         tipo: TransactionType.recarga,
         valor: 2000000.0,
-        fecha: DateTime(2026, 3, 1),
+        fecha: DateTime(ahora.year, ahora.month, 2),
       );
 
       final tx2 = Transaction(
@@ -168,12 +209,14 @@ void main() {
         clienteNombre: 'Mariana Duarte',
         tipo: TransactionType.retiro,
         valor: 500000.0,
-        fecha: DateTime(2026, 3, 2),
+        fecha: DateTime(ahora.year, ahora.month, 4),
       );
 
-      final repo = MockTransactionRepo([tx1, tx2]);
-      final getTransactions = GetTransactionsUseCase(repo);
+      final txRepo = MockTransactionRepo([tx1, tx2]);
+      final clientRepo = MockClientRepo(testClients);
+      final getTransactions = GetTransactionsUseCase(txRepo);
       final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getClients = GetClientsUseCase(clientRepo);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -182,6 +225,7 @@ void main() {
             user: testUser,
             getTransactionsUseCase: getTransactions,
             getProfileUseCase: getProfile,
+            getClientsUseCase: getClients,
           ),
         ),
       );
@@ -190,30 +234,27 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       // Ambas transacciones visibles
-      expect(find.textContaining('Carlos Gómez'), findsOneWidget);
-      expect(find.textContaining('Mariana Duarte'), findsOneWidget);
+      expect(find.textContaining('Carlos Gómez'), findsWidgets);
+      expect(find.textContaining('Mariana Duarte'), findsWidgets);
 
-      // Seleccionar chip 'Recargas'
-      await tester.tap(find.text('Recargas'));
+      // Abrir dropdown de Tipo
+      final tipoDropdown = find.widgetWithText(DropdownButtonFormField<TransactionType?>, 'Tipo');
+      expect(tipoDropdown, findsOneWidget);
+      await tester.tap(tipoDropdown);
       await tester.pumpAndSettle();
 
-      // Solo Carlos Gómez debe estar visible
-      expect(find.textContaining('Carlos Gómez'), findsOneWidget);
-      expect(find.textContaining('Mariana Duarte'), findsNothing);
-
-      // Seleccionar chip 'Retiros' con ensureVisible para scroll horizontal
-      await tester.ensureVisible(find.text('Retiros'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Retiros'));
+      // Seleccionar opción 'Recarga' en el popup
+      final opcionRecarga = find.widgetWithText(DropdownMenuItem<TransactionType?>, 'Recarga').last;
+      await tester.tap(opcionRecarga);
       await tester.pumpAndSettle();
 
-      // Solo Mariana Duarte debe estar visible
-      expect(find.textContaining('Carlos Gómez'), findsNothing);
-      expect(find.textContaining('Mariana Duarte'), findsOneWidget);
+      // Solo Carlos Gómez debe estar en la lista de resultados
+      expect(find.textContaining('+ \$ 2.000.000,00'), findsOneWidget);
+      expect(find.textContaining('- \$ 500.000,00'), findsNothing);
     });
 
     testWidgets('Tocar una tarjeta debe abrir el modal de detalle inferior', (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
+      tester.view.physicalSize = const Size(420, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -224,13 +265,15 @@ void main() {
         clienteNombre: 'Carlos Gómez',
         tipo: TransactionType.recarga,
         valor: 2000000.0,
-        fecha: DateTime(2026, 3, 1),
+        fecha: DateTime(ahora.year, ahora.month, 1),
         observacion: 'Depósito en efectivo',
       );
 
-      final repo = MockTransactionRepo([tx]);
-      final getTransactions = GetTransactionsUseCase(repo);
+      final txRepo = MockTransactionRepo([tx]);
+      final clientRepo = MockClientRepo(testClients);
+      final getTransactions = GetTransactionsUseCase(txRepo);
       final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getClients = GetClientsUseCase(clientRepo);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -239,6 +282,7 @@ void main() {
             user: testUser,
             getTransactionsUseCase: getTransactions,
             getProfileUseCase: getProfile,
+            getClientsUseCase: getClients,
           ),
         ),
       );
@@ -247,7 +291,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       // Tocar la tarjeta
-      await tester.tap(find.textContaining('Carlos Gómez'));
+      await tester.tap(find.textContaining('+ \$ 2.000.000,00'));
       await tester.pumpAndSettle();
 
       // Verificar modal inferior
