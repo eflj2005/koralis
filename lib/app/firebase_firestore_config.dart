@@ -27,6 +27,9 @@ class FirebaseFirestoreConfig {
   /// Colección raíz de instrumentos financieros de la aplicación Koralis.
   static const String colInstrumentos = 'instruments';
 
+  /// Colección raíz de bancos y entidades financieras.
+  static const String colBancos = 'banks';
+
   // ---------------------------------------------------------------------------
   // Campos Comunes
   // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:core/core.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/instruments/domain/entities/instrument.dart';
 import 'package:koralis_app/features/instruments/domain/repositories/instrument_repository.dart';
@@ -8,6 +9,9 @@ import 'package:koralis_app/features/instruments/presentation/instrument_form_sc
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/repositories/profile_repository.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
+import 'package:koralis_app/features/instruments/domain/entities/bank.dart';
+import 'package:koralis_app/features/instruments/domain/repositories/bank_repository.dart';
+import 'package:koralis_app/features/instruments/domain/usecases/get_banks_usecase.dart';
 
 class MockProfileRepo implements ProfileRepository {
   @override
@@ -20,6 +24,21 @@ class MockProfileRepo implements ProfileRepository {
       correo: 'edwin@koralis.com',
     );
   }
+}
+
+class MockBankRepo implements BankRepository {
+  final List<Bank> bancos;
+
+  MockBankRepo({
+    this.bancos = const [
+      Bank(id: 'b1', nombre: 'Bancolombia'),
+      Bank(id: 'b2', nombre: 'Davivienda'),
+      Bank(id: 'b3', nombre: 'Skandia'),
+    ],
+  });
+
+  @override
+  Future<List<Bank>> getBanks() async => bancos;
 }
 
 class MockInstrumentRepo implements InstrumentRepository {
@@ -63,6 +82,7 @@ void main() {
       final repo = MockInstrumentRepo();
       final saveUseCase = SaveInstrumentUseCase(repo);
       final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getBanks = GetBanksUseCase(MockBankRepo());
 
       await tester.pumpWidget(
         MaterialApp(
@@ -71,6 +91,7 @@ void main() {
             user: testUser,
             saveInstrumentUseCase: saveUseCase,
             getProfileUseCase: getProfile,
+            getBanksUseCase: getBanks,
           ),
         ),
       );
@@ -117,6 +138,7 @@ void main() {
       final repo = MockInstrumentRepo();
       final saveUseCase = SaveInstrumentUseCase(repo);
       final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getBanks = GetBanksUseCase(MockBankRepo());
 
       await tester.pumpWidget(
         MaterialApp(
@@ -126,6 +148,7 @@ void main() {
             instrument: existente,
             saveInstrumentUseCase: saveUseCase,
             getProfileUseCase: getProfile,
+            getBanksUseCase: getBanks,
           ),
         ),
       );
@@ -137,6 +160,86 @@ void main() {
       expect(find.text('CDT-BCOL-5544'), findsOneWidget);
       expect(find.text('Bancolombia'), findsOneWidget);
       expect(find.text('Guardar Cambios'), findsOneWidget);
+    });
+
+    testWidgets('Debe permitir seleccionar una entidad financiera desde la lista desplegable de banks', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repo = MockInstrumentRepo();
+      final saveUseCase = SaveInstrumentUseCase(repo);
+      final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getBanks = GetBanksUseCase(MockBankRepo());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          home: InstrumentFormScreen(
+            user: testUser,
+            saveInstrumentUseCase: saveUseCase,
+            getProfileUseCase: getProfile,
+            getBanksUseCase: getBanks,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Abrir lista desplegable de Entidad Financiera
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+
+      // Verificar que aparezcan las opciones de bancos
+      expect(find.text('Davivienda').last, findsOneWidget);
+
+      // Seleccionar Davivienda
+      await tester.tap(find.text('Davivienda').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Davivienda'), findsOneWidget);
+    });
+
+    testWidgets('El campo Plazo (Días) no debe permitir más de 3 dígitos', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repo = MockInstrumentRepo();
+      final saveUseCase = SaveInstrumentUseCase(repo);
+      final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getBanks = GetBanksUseCase(MockBankRepo());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          home: InstrumentFormScreen(
+            user: testUser,
+            saveInstrumentUseCase: saveUseCase,
+            getProfileUseCase: getProfile,
+            getBanksUseCase: getBanks,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final plazoFinder = find.widgetWithText(AppTextField, 'Plazo (Días)');
+      expect(plazoFinder, findsOneWidget);
+
+      // Ingresar 4 dígitos
+      await tester.enterText(plazoFinder, '1234');
+      await tester.pump();
+
+      // Debe limitarse automáticamente a 3 dígitos (123)
+      final textField = tester.widget<TextField>(
+        find.descendant(of: plazoFinder, matching: find.byType(TextField)),
+      );
+      expect(textField.controller?.text, '123');
     });
   });
 }

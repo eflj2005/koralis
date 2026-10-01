@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 // ---------------------------------------------------------------------------
 // AppTextField
@@ -64,6 +65,9 @@ class AppTextField extends StatefulWidget {
   /// Número mínimo de líneas visibles que ocupa el campo.
   final int? minLines;
 
+  /// Lista opcional de formateadores de entrada de texto (filtros numéricos, límite de caracteres, etc.).
+  final List<TextInputFormatter>? inputFormatters;
+
   const AppTextField({
     super.key,
     this.label,
@@ -79,6 +83,7 @@ class AppTextField extends StatefulWidget {
     this.borderRadius = const BorderRadius.all(Radius.circular(12.0)),
     this.maxLines = 1,
     this.minLines,
+    this.inputFormatters,
   });
 
   @override
@@ -121,6 +126,7 @@ class _AppTextFieldState extends State<AppTextField> {
       keyboardType: widget.tipoTeclado,
       textCapitalization: widget.textCapitalization,
       validator: widget.validator,
+      inputFormatters: widget.inputFormatters,
       maxLines: widget.esOscuro ? 1 : widget.maxLines,
       minLines: widget.esOscuro ? 1 : widget.minLines,
       style: TextStyle(
@@ -183,3 +189,119 @@ class _AppTextFieldState extends State<AppTextField> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// AppDropdownField
+// ---------------------------------------------------------------------------
+
+/// Widget reutilizable de lista desplegable de la aplicación.
+/// Mantiene la misma línea gráfica, bordes, colores, padding e íconos que [AppTextField].
+class AppDropdownField<T> extends StatelessWidget {
+  /// Etiqueta superior flotante del campo.
+  final String? label;
+
+  /// Texto orientativo cuando no se ha seleccionado ninguna opción.
+  final String? hint;
+
+  /// Valor actualmente seleccionado en la lista desplegable.
+  final T? value;
+
+  /// Lista de opciones disponibles para selección.
+  final List<DropdownMenuItem<T>> items;
+
+  /// Callback invocado cuando el usuario selecciona una opción diferente.
+  final ValueChanged<T?>? onChanged;
+
+  /// Función validadora del formulario. Retorna un mensaje de error o null si es válido.
+  final String? Function(T?)? validator;
+
+  /// Ícono prefijo representativo al inicio del campo.
+  final IconData? icono;
+
+  /// Color de fondo del campo (blanco por defecto para contraste).
+  final Color fillColor;
+
+  /// Radio de curvatura de los bordes del campo (12 px por defecto).
+  final BorderRadius borderRadius;
+
+  /// Indica si los datos de la lista se encuentran en proceso de carga asíncrona.
+  final bool isLoading;
+
+  const AppDropdownField({
+    super.key,
+    this.label,
+    this.hint,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+    this.validator,
+    this.icono,
+    this.fillColor = Colors.white,
+    this.borderRadius = const BorderRadius.all(Radius.circular(12.0)),
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const List<String> fuentesRespaldo = [
+      'Roboto',
+      'Noto Sans',
+      'Segoe UI',
+      'Arial',
+      'sans-serif',
+    ];
+
+    final theme = Theme.of(context);
+
+    return DropdownButtonFormField<T>(
+      key: ValueKey(value),
+      initialValue: value,
+      items: items,
+      onChanged: isLoading ? null : onChanged,
+      validator: validator,
+      isExpanded: true,
+      dropdownColor: Colors.white,
+      icon: isLoading
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.arrow_drop_down_rounded, size: 24),
+      style: TextStyle(
+        color: theme.colorScheme.onSurface,
+        fontFamilyFallback: fuentesRespaldo,
+      ),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: fillColor,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        labelText: label,
+        labelStyle: const TextStyle(
+          fontFamilyFallback: fuentesRespaldo,
+        ),
+        hintText: hint,
+        hintStyle: TextStyle(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+          fontFamilyFallback: fuentesRespaldo,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: borderRadius,
+        ),
+        prefixIcon: icono != null
+            ? Padding(
+                padding: const EdgeInsets.only(left: 10, right: 4),
+                child: Icon(icono, size: 22),
+              )
+            : null,
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 36,
+          minHeight: 40,
+        ),
+      ),
+    );
+  }
+}
+
