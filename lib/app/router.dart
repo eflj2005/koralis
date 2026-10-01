@@ -8,6 +8,8 @@ import 'package:koralis_app/features/clients/presentation/clients_screen.dart';
 import 'package:koralis_app/features/clients/presentation/client_form_screen.dart';
 import 'package:koralis_app/features/instruments/presentation/instruments_screen.dart';
 import 'package:koralis_app/features/instruments/presentation/instrument_form_screen.dart';
+import 'package:koralis_app/features/transactions/presentation/transactions_screen.dart';
+import 'package:koralis_app/features/transactions/presentation/transaction_form_screen.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 
@@ -60,6 +62,28 @@ class AppRouter {
           final user = settings.arguments as User;
           return MaterialPageRoute(
             builder: (_) => InstrumentFormScreen(user: user),
+          );
+        }
+        return MaterialPageRoute(builder: (_) => const LoginScreen());
+      case '/transactions':
+        final user = settings.arguments as User;
+        return MaterialPageRoute(
+          builder: (_) => TransactionsScreen(user: user),
+        );
+      case '/transaction_form':
+        if (settings.arguments is TransactionFormArgs) {
+          final args = settings.arguments as TransactionFormArgs;
+          return MaterialPageRoute(
+            builder: (_) => TransactionFormScreen(
+              user: args.user,
+              transaction: args.transaction,
+              clienteIdPreseleccionado: args.clienteIdPreseleccionado,
+            ),
+          );
+        } else if (settings.arguments is User) {
+          final user = settings.arguments as User;
+          return MaterialPageRoute(
+            builder: (_) => TransactionFormScreen(user: user),
           );
         }
         return MaterialPageRoute(builder: (_) => const LoginScreen());

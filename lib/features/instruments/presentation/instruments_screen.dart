@@ -278,9 +278,10 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
         icono: Icons.receipt_long_outlined,
         colorAcento: colorScheme.tertiary,
         onTap: () {
-          showUnderConstructionDialog(
+          Navigator.pushReplacementNamed(
             context,
-            accion: 'Módulo de Transacciones',
+            '/transactions',
+            arguments: widget.user,
           );
         },
       ),

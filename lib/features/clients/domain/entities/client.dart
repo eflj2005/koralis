@@ -1,6 +1,9 @@
+import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
+
 /// Entidad de dominio que representa a un cliente en el ecosistema Koralis.
 ///
-/// Modela los datos de contacto, identificación legal, notas u observaciones y estado operativo.
+/// Modela los datos de contacto, identificación legal, notas u observaciones,
+/// transacciones embebidas y estado operativo.
 class Client {
   /// Identificador único del cliente en Cloud Firestore.
   final String id;
@@ -26,6 +29,9 @@ class Client {
   /// Fecha de registro o vinculación del cliente.
   final DateTime fechaCreacion;
 
+  /// Historial de transacciones financieras registradas como subobjeto del cliente.
+  final List<Transaction> transacciones;
+
   Client({
     required this.id,
     required this.nombre,
@@ -34,8 +40,13 @@ class Client {
     required this.telefono,
     this.observacion = '',
     this.estado = 'Activo',
+    this.transacciones = const [],
     DateTime? fechaCreacion,
   }) : fechaCreacion = fechaCreacion ?? DateTime.now();
+
+  /// Saldo monetario disponible del cliente calculado sumando ingresos y restando egresos.
+  double get saldoDisponible =>
+      transacciones.fold(0.0, (acum, t) => acum + t.valorFirmado);
 
   /// Crea una copia inmutable con modificaciones puntuales.
   Client copyWith({
@@ -46,6 +57,7 @@ class Client {
     String? telefono,
     String? observacion,
     String? estado,
+    List<Transaction>? transacciones,
     DateTime? fechaCreacion,
   }) {
     return Client(
@@ -56,7 +68,9 @@ class Client {
       telefono: telefono ?? this.telefono,
       observacion: observacion ?? this.observacion,
       estado: estado ?? this.estado,
+      transacciones: transacciones ?? this.transacciones,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
     );
   }
 }
+

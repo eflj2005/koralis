@@ -1,6 +1,7 @@
-import 'package:core/core.dart';
+import 'package:core/core.dart' hide Transaction;
 import 'package:koralis_app/app/firebase.dart';
 import 'package:koralis_app/app/firebase_firestore_config.dart';
+import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
 import '../../domain/entities/client.dart';
 import '../../domain/repositories/client_repository.dart';
 
@@ -34,6 +35,18 @@ class ClientRepositoryImpl implements ClientRepository {
           }
         }
 
+        final rawTxList = data[FirebaseFirestoreConfig.campoTransacciones];
+        List<Transaction> txs = [];
+        if (rawTxList is List) {
+          txs = rawTxList
+              .whereType<Map>()
+              .map((m) => Transaction.fromMap(
+                    Map<String, dynamic>.from(m),
+                    m['id'] as String?,
+                  ))
+              .toList();
+        }
+
         return Client(
           id: data['id'] as String? ?? '',
           nombre: data['nombre'] as String? ?? '',
@@ -42,6 +55,7 @@ class ClientRepositoryImpl implements ClientRepository {
           telefono: data['telefono'] as String? ?? '',
           observacion: data['observacion'] as String? ?? (data['tipo'] as String? ?? ''),
           estado: data['estado'] as String? ?? 'Activo',
+          transacciones: txs,
           fechaCreacion: fecha,
         );
       }).toList();
@@ -63,6 +77,11 @@ class ClientRepositoryImpl implements ClientRepository {
       'fechaCreacion': client.fechaCreacion.millisecondsSinceEpoch,
     };
 
+    if (client.transacciones.isNotEmpty) {
+      datos[FirebaseFirestoreConfig.campoTransacciones] =
+          client.transacciones.map((t) => t.toMap()).toList();
+    }
+
     // Al guardar el documento se crea la colección 'clients' si no existía previamente
     await _firestore.setDocument(
       collectionPath: FirebaseFirestoreConfig.colClientes,
@@ -71,3 +90,4 @@ class ClientRepositoryImpl implements ClientRepository {
     );
   }
 }
+

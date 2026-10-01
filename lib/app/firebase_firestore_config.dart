@@ -27,6 +27,9 @@ class FirebaseFirestoreConfig {
   /// Colección raíz de instrumentos financieros de la aplicación Koralis.
   static const String colInstrumentos = 'instruments';
 
+  /// Clave del subobjeto/lista donde se almacenan las transacciones dentro del documento de cada cliente.
+  static const String campoTransacciones = 'transacciones';
+
   /// Colección raíz de bancos y entidades financieras.
   static const String colBancos = 'banks';
 

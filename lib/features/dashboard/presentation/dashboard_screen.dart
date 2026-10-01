@@ -275,12 +275,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titulo: 'Transacciones',
         icono: Icons.receipt_long_outlined,
         colorAcento: colorScheme.tertiary,
-        onTap: () {
+        onTap: () async {
           setState(() => _pestanaSeleccionada = 2);
-          showUnderConstructionDialog(
-            context,
-            accion: 'Módulo de Transacciones',
-          );
+          await Navigator.pushNamed(context, '/transactions', arguments: widget.user);
+          if (mounted) {
+            setState(() => _pestanaSeleccionada = null);
+          }
         },
       ),
       AppFolderTabItem(
@@ -531,9 +531,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         _buildTarjetaDashboard(
                           context: context,
                           onTap: () {
-                            showUnderConstructionDialog(
+                            Navigator.pushNamed(
                               context,
-                              accion: 'Módulo de Transacciones',
+                              '/transactions',
+                              arguments: widget.user,
                             );
                           },
                           child: Row(

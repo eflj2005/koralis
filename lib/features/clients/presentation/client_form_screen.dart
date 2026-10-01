@@ -294,7 +294,11 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
         icono: Icons.receipt_long_outlined,
         colorAcento: colorScheme.tertiary,
         onTap: () {
-          showUnderConstructionDialog(context, accion: 'Módulo de Transacciones');
+          Navigator.pushReplacementNamed(
+            context,
+            '/transactions',
+            arguments: widget.user,
+          );
         },
       ),
       AppFolderTabItem(

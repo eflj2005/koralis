@@ -462,10 +462,8 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
         icono: Icons.receipt_long_outlined,
         colorAcento: colorScheme.tertiary,
         onTap: () {
-          showUnderConstructionDialog(
-            context,
-            accion: 'Módulo de Transacciones',
-          );
+          Navigator.pop(context);
+          Navigator.pushNamed(context, '/transactions', arguments: widget.user);
         },
       ),
       AppFolderTabItem(
