@@ -146,6 +146,9 @@ void main() {
       // 7. Valor Final Rend. ($96.000 - $3.840 = $92.160)
       expect(find.text('Valor Final Rend: '), findsOneWidget);
       expect(find.text('\$ 92.160,00'), findsOneWidget);
+
+      // 8. Badge de Estado del Instrumento
+      expect(find.text('Activo'), findsOneWidget);
     });
 
     testWidgets('Tocar una tarjeta abre el modal de detalle rápido', (tester) async {
@@ -191,6 +194,7 @@ void main() {
       // Verificar que se abrió el bottom sheet de detalle
       expect(find.text('Período de Inversión'), findsOneWidget);
       expect(find.text('Rendimientos Brutos'), findsOneWidget);
+      expect(find.text('Estado del Instrumento'), findsOneWidget);
       expect(find.text('Editar Instrumento'), findsOneWidget);
     });
   });

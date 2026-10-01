@@ -61,6 +61,7 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
           retencionPorcentaje:
               (data['retencionPorcentaje'] as num?)?.toDouble() ?? 4.0,
           observacion: data['observacion'] as String? ?? '',
+          estado: data['estado'] as String? ?? 'Activo',
           fechaCreacion: fechaCreacion,
           participaciones: participaciones,
         );
@@ -82,6 +83,7 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
       'rendimientoTProyec': instrument.rendimientoTProyec,
       'retencionPorcentaje': instrument.retencionPorcentaje,
       'observacion': instrument.observacion.trim(),
+      'estado': instrument.estado,
       'fechaCreacion': instrument.fechaCreacion.millisecondsSinceEpoch,
       'participaciones': instrument.participaciones.map((p) => p.toMap()).toList(),
     };

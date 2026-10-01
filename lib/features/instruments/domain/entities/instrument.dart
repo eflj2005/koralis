@@ -64,6 +64,9 @@ class Instrument {
   /// Observaciones o notas internas adicionales.
   final String observacion;
 
+  /// Estado operativo del instrumento ('Activo' o 'Cerrado').
+  final String estado;
+
   /// Fecha de registro en el sistema.
   final DateTime fechaCreacion;
 
@@ -81,6 +84,7 @@ class Instrument {
     required this.rendimientoTProyec,
     this.retencionPorcentaje = 4.0,
     this.observacion = '',
+    this.estado = 'Activo',
     DateTime? fechaCreacion,
     this.participaciones = const [],
   }) : fechaCreacion = fechaCreacion ?? DateTime.now();
@@ -118,6 +122,7 @@ class Instrument {
     double? rendimientoTProyec,
     double? retencionPorcentaje,
     String? observacion,
+    String? estado,
     DateTime? fechaCreacion,
     List<InstrumentClientShare>? participaciones,
   }) {
@@ -132,6 +137,7 @@ class Instrument {
       rendimientoTProyec: rendimientoTProyec ?? this.rendimientoTProyec,
       retencionPorcentaje: retencionPorcentaje ?? this.retencionPorcentaje,
       observacion: observacion ?? this.observacion,
+      estado: estado ?? this.estado,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
       participaciones: participaciones ?? this.participaciones,
     );

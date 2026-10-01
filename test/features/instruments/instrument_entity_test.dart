@@ -80,5 +80,12 @@ void main() {
       // 300,000 - 12,000 = 288,000
       expect(updated.valorFinalRend, equals(288000.0));
     });
+
+    test('Campo estado debe ser Activo por defecto y permitir modificarse con copyWith', () {
+      expect(instrument.estado, equals('Activo'));
+
+      final cerrado = instrument.copyWith(estado: 'Cerrado');
+      expect(cerrado.estado, equals('Cerrado'));
+    });
   });
 }

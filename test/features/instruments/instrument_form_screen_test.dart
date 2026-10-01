@@ -109,6 +109,7 @@ void main() {
       expect(find.text('Rendimiento T. Proyec. (\$)'), findsOneWidget);
       expect(find.text('Retención %'), findsOneWidget);
       expect(find.text('Retención (\$):'), findsOneWidget);
+      expect(find.text('Estado del Instrumento'), findsOneWidget);
       expect(find.text('Observación'), findsOneWidget);
 
       // Resumen Financiero Dinámico
@@ -189,7 +190,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       // Abrir lista desplegable de Entidad Financiera
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.tap(find.widgetWithText(AppDropdownField<String>, 'Entidad Financiera'));
       await tester.pumpAndSettle();
 
       // Verificar que aparezcan las opciones de bancos
@@ -240,6 +241,48 @@ void main() {
         find.descendant(of: plazoFinder, matching: find.byType(TextField)),
       );
       expect(textField.controller?.text, '123');
+    });
+
+    testWidgets('Debe permitir seleccionar el Estado del instrumento (Activo / Cerrado)', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repo = MockInstrumentRepo();
+      final saveUseCase = SaveInstrumentUseCase(repo);
+      final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getBanks = GetBanksUseCase(MockBankRepo());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          home: InstrumentFormScreen(
+            user: testUser,
+            saveInstrumentUseCase: saveUseCase,
+            getProfileUseCase: getProfile,
+            getBanksUseCase: getBanks,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final estadoFinder = find.widgetWithText(AppDropdownField<String>, 'Estado del Instrumento');
+      expect(estadoFinder, findsOneWidget);
+
+      await tester.ensureVisible(estadoFinder);
+      await tester.pumpAndSettle();
+
+      await tester.tap(estadoFinder);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cerrado').last, findsOneWidget);
+      await tester.tap(find.text('Cerrado').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cerrado'), findsOneWidget);
     });
   });
 }

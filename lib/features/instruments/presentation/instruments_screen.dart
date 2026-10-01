@@ -305,9 +305,21 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                     ],
                   ),
                 ),
-                AppBadge(
-                  texto: '${instrumento.tasaIea.toStringAsFixed(2)}% I.E.A.',
-                  color: colorScheme.primary,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AppBadge(
+                      texto: instrumento.estado,
+                      color: instrumento.estado == 'Activo'
+                          ? Colors.green
+                          : Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 6),
+                    AppBadge(
+                      texto: '${instrumento.tasaIea.toStringAsFixed(2)}% I.E.A.',
+                      color: colorScheme.primary,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -315,6 +327,25 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
             const Divider(),
             const SizedBox(height: 8),
 
+            ListTile(
+              dense: true,
+              leading: Icon(
+                Icons.flag_outlined,
+                color: instrumento.estado == 'Activo'
+                    ? Colors.green
+                    : Colors.grey.shade600,
+              ),
+              title: const Text('Estado del Instrumento'),
+              subtitle: Text(
+                instrumento.estado,
+                style: TextStyle(
+                  color: instrumento.estado == 'Activo'
+                      ? Colors.green.shade800
+                      : Colors.grey.shade700,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
             ListTile(
               dense: true,
               leading: const Icon(Icons.date_range_outlined),
@@ -500,33 +531,44 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                                       texto: '${inst.tasaIea.toStringAsFixed(2)}% I.E.A.',
                                       color: colorScheme.primary,
                                     ),
-                                    pie: Align(
-                                      alignment: Alignment.centerRight,
-                                      child: FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        alignment: Alignment.centerRight,
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              'Valor Final Rend: ',
-                                              style: theme.textTheme.bodySmall?.copyWith(
-                                                color: colorScheme.onSurfaceVariant,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                            Text(
-                                              _formatearMoneda(inst.valorFinalRend),
-                                              style: TextStyle(
-                                                color: Colors.green.shade800,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 15,
-                                              ),
-                                            ),
-                                          ],
+                                    pie: Row(
+                                      children: [
+                                        // Badge indicador del estado operativo (Activo / Cerrado)
+                                        AppBadge(
+                                          texto: inst.estado,
+                                          color: inst.estado == 'Activo'
+                                              ? Colors.green
+                                              : Colors.grey.shade600,
                                         ),
-                                      ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerRight,
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  'Valor Final Rend: ',
+                                                  style: theme.textTheme.bodySmall?.copyWith(
+                                                    color: colorScheme.onSurfaceVariant,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  _formatearMoneda(inst.valorFinalRend),
+                                                  style: TextStyle(
+                                                    color: Colors.green.shade800,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 15,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     onTap: () => _mostrarFichaRapida(context, inst),
                                   );

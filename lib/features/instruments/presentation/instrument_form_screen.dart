@@ -57,6 +57,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
   late final TextEditingController _rendimientoTProyecCtrl;
   late final TextEditingController _retencionPorcentajeCtrl;
   late final TextEditingController _observacionCtrl;
+  late String _estado;
 
   bool _guardando = false;
 
@@ -107,6 +108,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
           : '4.00',
     );
     _observacionCtrl = TextEditingController(text: actual?.observacion ?? '');
+    _estado = actual?.estado ?? 'Activo';
 
     // Escuchadores reactivos para recalcular valores en vivo
     _diasCtrl.addListener(_actualizarCalculos);
@@ -271,6 +273,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
       rendimientoTProyec: _rendimientoTProyec,
       retencionPorcentaje: _retencionPorcentaje,
       observacion: _observacionCtrl.text.trim(),
+      estado: _estado,
       fechaCreacion: fechaCreacion,
       participaciones: widget.instrument?.participaciones ?? const [],
     );
@@ -985,6 +988,49 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 18),
+
+                                  // --- Selector de Estado del Instrumento ---
+                                  AppDropdownField<String>(
+                                    label: 'Estado del Instrumento',
+                                    value: _estado,
+                                    icono: Icons.flag_outlined,
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: 'Activo',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.circle,
+                                              size: 10,
+                                              color: Colors.green,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text('Activo'),
+                                          ],
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'Cerrado',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.circle,
+                                              size: 10,
+                                              color: Colors.grey,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text('Cerrado'),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    onChanged: (nuevoEstado) {
+                                      if (nuevoEstado != null) {
+                                        setState(() => _estado = nuevoEstado);
+                                      }
+                                    },
+                                  ),
+                                  const SizedBox(height: 14),
 
                                   // --- Observación (2 renglones de alto fijo) ---
                                   AppTextField(
