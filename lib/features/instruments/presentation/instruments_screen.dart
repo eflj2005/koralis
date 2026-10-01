@@ -337,7 +337,9 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                       texto: instrumento.estado,
                       color: instrumento.estado == 'Activo'
                           ? Colors.green
-                          : Colors.grey.shade600,
+                          : (instrumento.estado == 'Borrador'
+                              ? Colors.amber.shade700
+                              : Colors.grey.shade600),
                     ),
                     const SizedBox(width: 6),
                     AppBadge(
@@ -546,7 +548,9 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                                       texto: inst.estado,
                                       color: inst.estado == 'Activo'
                                           ? Colors.green
-                                          : Colors.grey.shade600,
+                                          : (inst.estado == 'Borrador'
+                                              ? Colors.amber.shade700
+                                              : Colors.grey.shade600),
                                     ),
                                     pie: Row(
                                       children: [

@@ -104,6 +104,7 @@ void main() {
         valorInvertido: 5000000.0,
         rendimientoTProyec: 96000.0,
         retencionPorcentaje: 4.0,
+        estado: 'Activo',
       );
 
       final repo = MockInstrumentRepo([inst]);
@@ -167,6 +168,7 @@ void main() {
         valorInvertido: 5000000.0,
         rendimientoTProyec: 96000.0,
         retencionPorcentaje: 4.0,
+        estado: 'Activo',
       );
 
       final repo = MockInstrumentRepo([inst]);
@@ -196,6 +198,45 @@ void main() {
       expect(find.text('Rendimientos Brutos'), findsOneWidget);
       expect(find.text('Activo'), findsWidgets);
       expect(find.text('Editar Instrumento'), findsOneWidget);
+    });
+
+    testWidgets('Debe mostrar badge Borrador cuando el instrumento tiene estado Borrador', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final inst = Instrument(
+        id: 'inst-borrador',
+        numero: 'CDT-DRAFT',
+        entidad: 'Bancolombia',
+        fechaApertura: DateTime(2026, 3, 1),
+        dias: 30,
+        tasaIea: 10.0,
+        valorInvertido: 1000000.0,
+        rendimientoTProyec: 8000.0,
+        estado: 'Borrador',
+      );
+
+      final repo = MockInstrumentRepo([inst]);
+      final getInstruments = GetInstrumentsUseCase(repo);
+      final getProfile = GetProfileUseCase(MockProfileRepo());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          home: InstrumentsScreen(
+            user: testUser,
+            getInstrumentsUseCase: getInstruments,
+            getProfileUseCase: getProfile,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Borrador'), findsOneWidget);
     });
   });
 }

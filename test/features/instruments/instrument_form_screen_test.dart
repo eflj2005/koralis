@@ -275,10 +275,15 @@ void main() {
       await tester.ensureVisible(estadoFinder);
       await tester.pumpAndSettle();
 
+      expect(find.text('Borrador'), findsOneWidget);
       expect(find.text('Activo'), findsOneWidget);
       expect(find.text('Cerrado'), findsOneWidget);
 
-      // Tocar el botón segmentado interactivo de 'Cerrado'
+      // Tocar el botón interactivo de 'Activo'
+      await tester.tap(find.text('Activo'));
+      await tester.pumpAndSettle();
+
+      // Tocar el botón interactivo de 'Cerrado'
       await tester.tap(find.text('Cerrado'));
       await tester.pumpAndSettle();
 

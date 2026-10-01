@@ -108,7 +108,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
           : '4.00',
     );
     _observacionCtrl = TextEditingController(text: actual?.observacion ?? '');
-    _estado = actual?.estado ?? 'Activo';
+    _estado = actual?.estado ?? 'Borrador';
 
     // Escuchadores reactivos para recalcular valores en vivo
     _diasCtrl.addListener(_actualizarCalculos);
@@ -1022,7 +1022,42 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                         const SizedBox(height: 10),
                                         Row(
                                           children: [
-                                            // Botón interactivo para estado 'Activo'
+                                            // 1. Botón interactivo para estado 'Borrador' (de primeras)
+                                            Expanded(
+                                              child: InkWell(
+                                                onTap: () => setState(() => _estado = 'Borrador'),
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: AnimatedContainer(
+                                                  duration: const Duration(milliseconds: 150),
+                                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: _estado == 'Borrador'
+                                                        ? Colors.amber.withValues(alpha: 0.18)
+                                                        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    border: Border.all(
+                                                      color: _estado == 'Borrador'
+                                                          ? Colors.amber.shade700
+                                                          : Colors.transparent,
+                                                      width: 1.5,
+                                                    ),
+                                                  ),
+                                                  alignment: Alignment.center,
+                                                  child: Text(
+                                                    'Borrador',
+                                                    style: TextStyle(
+                                                      color: _estado == 'Borrador'
+                                                          ? Colors.amber.shade800
+                                                          : colorScheme.onSurfaceVariant,
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            // 2. Botón interactivo para estado 'Activo'
                                             Expanded(
                                               child: InkWell(
                                                 onTap: () => setState(() => _estado = 'Activo'),
@@ -1056,8 +1091,8 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                                 ),
                                               ),
                                             ),
-                                            const SizedBox(width: 10),
-                                            // Botón interactivo para estado 'Cerrado'
+                                            const SizedBox(width: 8),
+                                            // 3. Botón interactivo para estado 'Cerrado'
                                             Expanded(
                                               child: InkWell(
                                                 onTap: () => setState(() => _estado = 'Cerrado'),

@@ -81,8 +81,11 @@ void main() {
       expect(updated.valorFinalRend, equals(288000.0));
     });
 
-    test('Campo estado debe ser Activo por defecto y permitir modificarse con copyWith', () {
-      expect(instrument.estado, equals('Activo'));
+    test('Campo estado debe ser Borrador por defecto y permitir modificarse con copyWith', () {
+      expect(instrument.estado, equals('Borrador'));
+
+      final activo = instrument.copyWith(estado: 'Activo');
+      expect(activo.estado, equals('Activo'));
 
       final cerrado = instrument.copyWith(estado: 'Cerrado');
       expect(cerrado.estado, equals('Cerrado'));
