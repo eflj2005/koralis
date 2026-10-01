@@ -147,15 +147,15 @@ class _AppTextFieldState extends State<AppTextField> {
         border: OutlineInputBorder(
           borderRadius: widget.borderRadius,
         ),
-        // Ícono prefijo compacto si fue proporcionado
+        // Ícono prefijo compacto con separación reducida hacia el texto
         prefixIcon: widget.icono != null
             ? Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
+                padding: const EdgeInsets.only(left: 10, right: 4),
                 child: Icon(widget.icono, size: 22),
               )
             : null,
         prefixIconConstraints: const BoxConstraints(
-          minWidth: 42,
+          minWidth: 36,
           minHeight: 40,
         ),
         // Botón de toggle de visibilidad compacto solo en modo contraseña
