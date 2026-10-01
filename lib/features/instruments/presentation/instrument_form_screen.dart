@@ -702,7 +702,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                   // --- Valor Invertido ---
                                   AppTextField(
                                     controller: _valorInvertidoCtrl,
-                                    label: 'Valor Invertido',
+                                    label: 'Valor Invertido (\$)',
                                     hint: 'Ej. 50000000',
                                     icono: Icons.attach_money_rounded,
                                     tipoTeclado:
@@ -732,7 +732,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                         flex: 2,
                                         child: AppTextField(
                                           controller: _tasaIeaCtrl,
-                                          label: 'Tasa',
+                                          label: '% Tasa I.E.A.',
                                           hint: 'Ej. 11.50',
                                           icono: Icons.percent_rounded,
                                           tipoTeclado:
@@ -759,7 +759,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                         flex: 3,
                                         child: AppTextField(
                                           controller: _rendimientoTProyecCtrl,
-                                          label: 'Rendimientos',
+                                          label: 'Rendimiento T. Proyec. (\$)',
                                           hint: 'Ej. 2500000',
                                           icono: Icons.trending_up_rounded,
                                           tipoTeclado:

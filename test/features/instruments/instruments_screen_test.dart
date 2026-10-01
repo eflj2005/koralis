@@ -124,9 +124,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // 1. Entidad y Número
+      // 1. Entidad (el número ya no forma parte de la tarjeta)
       expect(find.textContaining('Davivienda'), findsOneWidget);
-      expect(find.textContaining('CDT-9988'), findsOneWidget);
+      expect(find.textContaining('CDT-9988'), findsNothing);
 
       // 2. Fecha Apertura
       expect(find.textContaining('Apertura: 01/03/2026'), findsOneWidget);

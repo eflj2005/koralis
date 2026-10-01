@@ -486,9 +486,10 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                                   final inst = instrumentos[index];
 
                                   return AppListCard(
+                                    // Título enfocado en la entidad financiera sin el número de instrumento
                                     titulo: inst.entidad.isNotEmpty
-                                        ? '${inst.entidad} • ${inst.numero}'
-                                        : inst.numero,
+                                        ? inst.entidad
+                                        : 'Instrumento',
                                     subtitulo:
                                         'Apertura: ${_formatearFecha(inst.fechaApertura)}  •  Cierre: ${_formatearFecha(inst.fechaCierre)}',
                                     detalle:
