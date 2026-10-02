@@ -12,6 +12,7 @@ import 'package:koralis_app/features/clients/data/repositories/client_repository
 import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/get_transactions_usecase.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/save_transaction_usecase.dart';
+import 'package:koralis_app/features/transactions/domain/usecases/delete_transaction_usecase.dart';
 import 'package:koralis_app/features/transactions/data/repositories/transaction_repository_impl.dart';
 import '../domain/entities/instrument.dart';
 import '../domain/usecases/save_instrument_usecase.dart';
@@ -39,6 +40,7 @@ class InstrumentFormScreen extends StatefulWidget {
   final GetTransactionsUseCase? getTransactionsUseCase;
   final GetClientsUseCase? getClientsUseCase;
   final SaveTransactionUseCase? saveTransactionUseCase;
+  final DeleteTransactionUseCase? deleteTransactionUseCase;
 
   const InstrumentFormScreen({
     super.key,
@@ -50,6 +52,7 @@ class InstrumentFormScreen extends StatefulWidget {
     this.getTransactionsUseCase,
     this.getClientsUseCase,
     this.saveTransactionUseCase,
+    this.deleteTransactionUseCase,
   });
 
   @override
@@ -181,11 +184,97 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     }
   }
 
-  /// Guarda una transacción de inversión asociada al cliente y a este instrumento.
+  /// Guarda o actualiza una transacción de inversión asociada al cliente y a este instrumento.
   Future<void> _ejecutarGuardarAporte(Transaction tx) async {
     final useCase = widget.saveTransactionUseCase ??
         SaveTransactionUseCase(TransactionRepositoryImpl());
     await useCase.execute(tx);
+  }
+
+  /// Elimina una transacción de inversión asociada a este instrumento y reintegra el saldo al cliente.
+  Future<void> _ejecutarEliminarAporte(Transaction tx) async {
+    final useCase = widget.deleteTransactionUseCase ??
+        DeleteTransactionUseCase(TransactionRepositoryImpl());
+    await useCase.execute(tx.id, clienteId: tx.clienteId);
+  }
+
+  /// Solicita confirmación y elimina un aporte de cliente reintegrando el valor al disponible.
+  Future<void> _confirmarEliminarAporte(
+    BuildContext context,
+    Transaction tx,
+  ) async {
+    if (_estado != 'Borrador') {
+      AppMessenger.showInfoSnackBar(
+        context,
+        'Los aportes solo pueden eliminarse mientras el instrumento esté en estado "Borrador"',
+      );
+      return;
+    }
+
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: colorScheme.error,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Eliminar Aporte',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          '¿Estás seguro de eliminar el aporte de ${_formatearMoneda(tx.valor)} perteneciente a ${tx.clienteNombre}?\n\n'
+          'El monto será reintegrado automáticamente al saldo disponible del cliente.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true && mounted) {
+      try {
+        await _ejecutarEliminarAporte(tx);
+        if (mounted) {
+          setState(() {
+            _transaccionesAsociadasFuture = _cargarTransaccionesAsociadas();
+          });
+          AppMessenger.showSuccessSnackBar(
+            this.context,
+            'Aporte de ${_formatearMoneda(tx.valor)} eliminado correctamente',
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          AppMessenger.showErrorSnackBar(
+            this.context,
+            'No fue posible eliminar el aporte: $e',
+          );
+        }
+      }
+    }
   }
 
   /// Genera los items de la lista desplegable de entidades financieras.
@@ -1180,8 +1269,21 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     );
   }
 
-  /// Abre la hoja modal emergente para registrar un nuevo aporte de cliente a este instrumento.
-  Future<void> _abrirModalNuevoAporte(BuildContext context) async {
+  /// Abre la hoja modal emergente para registrar o modificar un aporte de cliente a este instrumento.
+  Future<void> _abrirModalNuevoAporte(
+    BuildContext context, {
+    Transaction? aporteAEditar,
+    List<Transaction>? aportesExistentes,
+  }) async {
+    // Restricción 4: Solo se permite gestionar aportes en estado Borrador
+    if (_estado != 'Borrador') {
+      AppMessenger.showInfoSnackBar(
+        context,
+        'Los aportes solo pueden gestionarse mientras el instrumento esté en estado "Borrador"',
+      );
+      return;
+    }
+
     if (!_esEdicion || widget.instrument == null) {
       AppMessenger.showInfoSnackBar(
         context,
@@ -1190,9 +1292,12 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
       return;
     }
 
+    final esModificacion = aporteAEditar != null;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final valorAporteCtrl = TextEditingController();
+    final valorAporteCtrl = TextEditingController(
+      text: esModificacion ? aporteAEditar.valor.toStringAsFixed(0) : '',
+    );
     final modalFormKey = GlobalKey<FormState>();
 
     List<Client> clientesDisponibles = [];
@@ -1206,11 +1311,47 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
       child: StatefulBuilder(
         builder: (modalContext, setModalState) {
           if (cargandoClientes && errorCarga == null) {
-            _cargarClientesDisponibles().then((lista) {
+            Future.wait([
+              _cargarClientesDisponibles(),
+              aportesExistentes != null
+                  ? Future.value(aportesExistentes)
+                  : _cargarTransaccionesAsociadas(),
+            ]).then((resultados) {
               if (modalContext.mounted) {
+                final todosLosClientes = resultados[0] as List<Client>;
+                final txs = resultados[1] as List<Transaction>;
+                final instId = widget.instrument!.id;
+                final instNum = widget.instrument!.numero;
+                final aportesInst = txs.where((t) {
+                  final esInversion = t.tipo == TransactionType.inversion;
+                  final ref = t.instrumentoId ?? '';
+                  return esInversion && (ref == instId || ref == instNum);
+                }).toList();
+
                 setModalState(() {
-                  clientesDisponibles =
-                      lista.where((c) => c.estado == 'Activo').toList();
+                  if (esModificacion) {
+                    // En edición el cliente se mantiene fijo y se precarga su entidad
+                    clienteSeleccionado = todosLosClientes.firstWhere(
+                      (c) => c.id == aporteAEditar.clienteId,
+                      orElse: () => Client(
+                        id: aporteAEditar.clienteId,
+                        nombre: aporteAEditar.clienteNombre,
+                        documento: '',
+                        correo: '',
+                        telefono: '',
+                      ),
+                    );
+                    clientesDisponibles = [clienteSeleccionado!];
+                  } else {
+                    // Restricción 1: Un mismo cliente no puede aportar más de una vez por instrumento
+                    final idsClientesConAporte =
+                        aportesInst.map((t) => t.clienteId).toSet();
+                    clientesDisponibles = todosLosClientes
+                        .where((c) =>
+                            c.estado == 'Activo' &&
+                            !idsClientesConAporte.contains(c.id))
+                        .toList();
+                  }
                   cargandoClientes = false;
                 });
               }
@@ -1223,6 +1364,13 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
               }
             });
           }
+
+          // Cálculo del disponible real para el aporte:
+          // En modificación, se suma el valor actual de este aporte al disponible del cliente.
+          final saldoLibre = clienteSeleccionado?.saldoDisponible ?? 0.0;
+          final disponibleMaximo = esModificacion
+              ? (saldoLibre + aporteAEditar.valor)
+              : saldoLibre;
 
           return Material(
             color: Colors.transparent,
@@ -1244,7 +1392,9 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
-                            Icons.savings_outlined,
+                            esModificacion
+                                ? Icons.edit_note_rounded
+                                : Icons.savings_outlined,
                             color: colorScheme.primary,
                             size: 22,
                           ),
@@ -1255,7 +1405,9 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Nuevo Aporte de Inversión',
+                                esModificacion
+                                    ? 'Modificar Aporte de Inversión'
+                                    : 'Nuevo Aporte de Inversión',
                                 style: theme.textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -1294,10 +1446,13 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                         ),
                         child: Text(
                           errorCarga!,
-                          style: TextStyle(color: colorScheme.error, fontSize: 13),
+                          style: TextStyle(
+                            color: colorScheme.error,
+                            fontSize: 13,
+                          ),
                         ),
                       )
-                    else if (clientesDisponibles.isEmpty)
+                    else if (!esModificacion && clientesDisponibles.isEmpty)
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -1307,12 +1462,14 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.info_outline_rounded,
-                                color: colorScheme.onSurfaceVariant),
+                            Icon(
+                              Icons.info_outline_rounded,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                             const SizedBox(width: 10),
                             const Expanded(
                               child: Text(
-                                'No hay clientes activos disponibles en el sistema.',
+                                'Todos los clientes activos ya cuentan con un aporte registrado en este instrumento.',
                                 style: TextStyle(fontSize: 13),
                               ),
                             ),
@@ -1320,36 +1477,86 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                         ),
                       )
                     else ...[
-                      // 1. Selector de Cliente
-                      AppDropdownField<String>(
-                        label: 'Cliente Inversor *',
-                        hint: 'Selecciona el cliente...',
-                        icono: Icons.person_search_rounded,
-                        value: clienteSeleccionado?.id,
-                        items: clientesDisponibles.map((c) {
-                          final docInfo =
-                              c.documento.isNotEmpty ? ' - ${c.documento}' : '';
-                          return DropdownMenuItem<String>(
-                            value: c.id,
-                            child: Text(
-                              '${c.nombre}$docInfo',
-                              overflow: TextOverflow.ellipsis,
+                      // 1. Selector o Visualizador de Cliente
+                      if (esModificacion)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: colorScheme.outline.withValues(alpha: 0.2),
                             ),
-                          );
-                        }).toList(),
-                        onChanged: (id) {
-                          setModalState(() {
-                            clienteSeleccionado =
-                                clientesDisponibles.firstWhere((c) => c.id == id);
-                          });
-                        },
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Selecciona un cliente';
-                          }
-                          return null;
-                        },
-                      ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.person_rounded,
+                                color: colorScheme.primary,
+                                size: 22,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Cliente Inversor',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: colorScheme.onSurfaceVariant,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${clienteSeleccionado?.nombre ?? aporteAEditar.clienteNombre}${clienteSeleccionado?.documento.isNotEmpty == true ? " - ${clienteSeleccionado!.documento}" : ""}',
+                                      style:
+                                          theme.textTheme.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        AppDropdownField<String>(
+                          label: 'Cliente Inversor *',
+                          hint: 'Selecciona el cliente...',
+                          icono: Icons.person_search_rounded,
+                          value: clienteSeleccionado?.id,
+                          items: clientesDisponibles.map((c) {
+                            final docInfo = c.documento.isNotEmpty
+                                ? ' - ${c.documento}'
+                                : '';
+                            return DropdownMenuItem<String>(
+                              value: c.id,
+                              child: Text(
+                                '${c.nombre}$docInfo',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (id) {
+                            setModalState(() {
+                              clienteSeleccionado = clientesDisponibles
+                                  .firstWhere((c) => c.id == id);
+                            });
+                          },
+                          validator: (val) {
+                            if (val == null || val.trim().isEmpty) {
+                              return 'Selecciona un cliente';
+                            }
+                            return null;
+                          },
+                        ),
                       const SizedBox(height: 14),
 
                       // 2. Tarjeta Informativa de Saldo Disponible
@@ -1357,12 +1564,12 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: clienteSeleccionado!.saldoDisponible > 0
+                            color: disponibleMaximo > 0
                                 ? Colors.green.withValues(alpha: 0.1)
                                 : Colors.amber.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: clienteSeleccionado!.saldoDisponible > 0
+                              color: disponibleMaximo > 0
                                   ? Colors.green.withValues(alpha: 0.35)
                                   : Colors.amber.shade700,
                             ),
@@ -1370,10 +1577,10 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                           child: Row(
                             children: [
                               Icon(
-                                clienteSeleccionado!.saldoDisponible > 0
+                                disponibleMaximo > 0
                                     ? Icons.account_balance_wallet_outlined
                                     : Icons.warning_amber_rounded,
-                                color: clienteSeleccionado!.saldoDisponible > 0
+                                color: disponibleMaximo > 0
                                     ? Colors.green.shade800
                                     : Colors.amber.shade900,
                                 size: 24,
@@ -1384,29 +1591,40 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      clienteSeleccionado!.saldoDisponible > 0
-                                          ? 'Saldo Disponible del Cliente'
-                                          : 'Sin Saldo Disponible',
+                                      esModificacion
+                                          ? 'Disponible Máximo para este Aporte'
+                                          : (disponibleMaximo > 0
+                                              ? 'Saldo Disponible del Cliente'
+                                              : 'Sin Saldo Disponible'),
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: clienteSeleccionado!.saldoDisponible > 0
+                                        color: disponibleMaximo > 0
                                             ? Colors.green.shade900
                                             : Colors.amber.shade900,
                                       ),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      _formatearMoneda(
-                                          clienteSeleccionado!.saldoDisponible),
+                                      _formatearMoneda(disponibleMaximo),
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
-                                        color: clienteSeleccionado!.saldoDisponible > 0
+                                        color: disponibleMaximo > 0
                                             ? Colors.green.shade900
                                             : Colors.amber.shade900,
                                       ),
                                     ),
+                                    if (esModificacion) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '(Saldo libre: ${_formatearMoneda(saldoLibre)} + Aporte actual: ${_formatearMoneda(aporteAEditar.valor)})',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -1423,7 +1641,8 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                         hint: 'Ej. 5000000',
                         icono: Icons.attach_money_rounded,
                         tipoTeclado: const TextInputType.numberWithOptions(
-                            decimal: true),
+                          decimal: true,
+                        ),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) {
                             return 'Ingresa el valor a invertir';
@@ -1434,8 +1653,8 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                             return 'Ingresa un valor mayor a cero';
                           }
                           if (clienteSeleccionado != null &&
-                              monto > clienteSeleccionado!.saldoDisponible) {
-                            return 'Supera el disponible (${_formatearMoneda(clienteSeleccionado!.saldoDisponible)})';
+                              monto > disponibleMaximo) {
+                            return 'Supera el disponible (${_formatearMoneda(disponibleMaximo)})';
                           }
                           return null;
                         },
@@ -1445,13 +1664,17 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                       // 4. Botón de Confirmación
                       AppButton(
                         texto: guardandoAporte
-                            ? 'Registrando...'
-                            : 'Registrar Aporte',
+                            ? 'Guardando...'
+                            : (esModificacion
+                                ? 'Actualizar Aporte'
+                                : 'Registrar Aporte'),
                         icono: Icons.check_circle_outline_rounded,
                         onPressed: guardandoAporte
                             ? null
                             : () async {
-                                if (!modalFormKey.currentState!.validate()) return;
+                                if (!modalFormKey.currentState!.validate()) {
+                                  return;
+                                }
                                 if (clienteSeleccionado == null) return;
 
                                 final monto = double.parse(
@@ -1463,37 +1686,62 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                 setModalState(() => guardandoAporte = true);
 
                                 try {
-                                  final nuevaTx = Transaction(
-                                    id: '',
-                                    clienteId: clienteSeleccionado!.id,
-                                    clienteNombre: clienteSeleccionado!.nombre,
-                                    tipo: TransactionType.inversion,
-                                    valor: monto,
-                                    fecha: DateTime.now(),
-                                    instrumentoId: widget.instrument!.id,
-                                    observacion:
-                                        'Aporte a instrumento ${widget.instrument!.numero}',
-                                  );
-
-                                  await _ejecutarGuardarAporte(nuevaTx);
-
-                                  if (context.mounted) {
-                                    Navigator.pop(modalContext);
-                                    setState(() {
-                                      _transaccionesAsociadasFuture =
-                                          _cargarTransaccionesAsociadas();
-                                    });
-                                    AppMessenger.showSuccessSnackBar(
-                                      context,
-                                      'Aporte de ${_formatearMoneda(monto)} registrado para ${clienteSeleccionado!.nombre}',
+                                  if (esModificacion) {
+                                    final txActualizada =
+                                        aporteAEditar.copyWith(
+                                      valor: monto,
+                                      observacion:
+                                          'Aporte a instrumento ${widget.instrument!.numero}',
                                     );
+
+                                    await _ejecutarGuardarAporte(txActualizada);
+
+                                    if (context.mounted) {
+                                      Navigator.pop(modalContext);
+                                      setState(() {
+                                        _transaccionesAsociadasFuture =
+                                            _cargarTransaccionesAsociadas();
+                                      });
+                                      AppMessenger.showSuccessSnackBar(
+                                        context,
+                                        'Aporte de ${_formatearMoneda(monto)} actualizado para ${clienteSeleccionado!.nombre}',
+                                      );
+                                    }
+                                  } else {
+                                    final nuevaTx = Transaction(
+                                      id: '',
+                                      clienteId: clienteSeleccionado!.id,
+                                      clienteNombre:
+                                          clienteSeleccionado!.nombre,
+                                      tipo: TransactionType.inversion,
+                                      valor: monto,
+                                      fecha: DateTime.now(),
+                                      instrumentoId: widget.instrument!.id,
+                                      observacion:
+                                          'Aporte a instrumento ${widget.instrument!.numero}',
+                                    );
+
+                                    await _ejecutarGuardarAporte(nuevaTx);
+
+                                    if (context.mounted) {
+                                      Navigator.pop(modalContext);
+                                      setState(() {
+                                        _transaccionesAsociadasFuture =
+                                            _cargarTransaccionesAsociadas();
+                                      });
+                                      AppMessenger.showSuccessSnackBar(
+                                        context,
+                                        'Aporte de ${_formatearMoneda(monto)} registrado para ${clienteSeleccionado!.nombre}',
+                                      );
+                                    }
                                   }
                                 } catch (e) {
                                   if (modalContext.mounted) {
-                                    setModalState(() => guardandoAporte = false);
+                                    setModalState(
+                                        () => guardandoAporte = false);
                                     AppMessenger.showErrorSnackBar(
                                       modalContext,
-                                      'Error al registrar aporte: $e',
+                                      'Error al procesar aporte: $e',
                                     );
                                   }
                                 }
@@ -1515,6 +1763,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
   Widget _buildTabAportes(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final esBorrador = _estado == 'Borrador';
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -1539,7 +1788,8 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (_esEdicion) ...[
+              // Restricción 4: El botón Agregar Aporte solo está disponible en estado Borrador
+              if (_esEdicion && esBorrador) ...[
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: () => _abrirModalNuevoAporte(context),
@@ -1562,6 +1812,40 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
             ],
           ),
           const SizedBox(height: 12),
+
+          // Banner informativo si el instrumento no está en estado Borrador
+          if (_esEdicion && !esBorrador)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Colors.amber.shade700.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.lock_outline_rounded,
+                    size: 20,
+                    color: Colors.amber.shade900,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'El instrumento está en estado "$_estado". Los aportes solo pueden agregarse, modificarse o eliminarse mientras esté en "Borrador".',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.amber.shade900,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           if (!_esEdicion)
             Container(
@@ -1715,7 +1999,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 14,
-                          vertical: 12,
+                          vertical: 10,
                         ),
                         decoration: BoxDecoration(
                           color: colorScheme.surface,
@@ -1724,54 +2008,150 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                             color: colorScheme.outline.withValues(alpha: 0.2),
                           ),
                         ),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            CircleAvatar(
-                              radius: 18,
-                              backgroundColor: colorScheme.primary.withValues(
-                                alpha: 0.15,
+                            Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor:
+                                      colorScheme.primary.withValues(
+                                    alpha: 0.15,
+                                  ),
+                                  child: Text(
+                                    inicial,
+                                    style: TextStyle(
+                                      color: colorScheme.primary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        tx.clienteNombre.isNotEmpty
+                                            ? tx.clienteNombre
+                                            : 'Cliente',
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _formatearFecha(tx.fecha),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                          color: colorScheme.onSurfaceVariant,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    _formatearMoneda(tx.valor),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: colorScheme.primary,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            // Controles 2 y 3: Modificar y Eliminar disponibles en estado Borrador
+                            if (esBorrador) ...[
+                              const SizedBox(height: 6),
+                              Divider(
+                                height: 1,
+                                color:
+                                    colorScheme.outline.withValues(alpha: 0.12),
                               ),
-                              child: Text(
-                                inicial,
-                                style: TextStyle(
-                                  color: colorScheme.primary,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
+                              const SizedBox(height: 2),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  alignment: WrapAlignment.end,
+                                  children: [
+                                    InkWell(
+                                      onTap: () => _abrirModalNuevoAporte(
+                                        context,
+                                        aporteAEditar: tx,
+                                        aportesExistentes: inversiones,
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.edit_outlined,
+                                              size: 14,
+                                              color: colorScheme.primary,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'Modificar',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: colorScheme.primary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    InkWell(
+                                      onTap: () =>
+                                          _confirmarEliminarAporte(context, tx),
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.delete_outline_rounded,
+                                              size: 14,
+                                              color: colorScheme.error,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'Eliminar',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: colorScheme.error,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    tx.clienteNombre.isNotEmpty
-                                        ? tx.clienteNombre
-                                        : 'Cliente',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    _formatearFecha(tx.fecha),
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Text(
-                              _formatearMoneda(tx.valor),
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.primary,
-                                fontSize: 14,
-                              ),
-                            ),
+                            ],
                           ],
                         ),
                       );

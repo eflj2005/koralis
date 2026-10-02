@@ -19,6 +19,7 @@ import 'package:koralis_app/features/transactions/domain/entities/transaction.da
 import 'package:koralis_app/features/transactions/domain/repositories/transaction_repository.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/get_transactions_usecase.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/save_transaction_usecase.dart';
+import 'package:koralis_app/features/transactions/domain/usecases/delete_transaction_usecase.dart';
 
 class MockProfileRepo implements ProfileRepository {
   @override
@@ -503,7 +504,7 @@ void main() {
         rendimientoTProyec: 1500000,
         retencionPorcentaje: 4.00,
         observacion: 'Instrumento inicial',
-        estado: 'Activo',
+        estado: 'Borrador',
         fechaCreacion: DateTime(2026, 3, 1),
       );
 
@@ -514,6 +515,7 @@ void main() {
       final txRepo = MockTransactionRepo(transacciones: []);
       final getTransactions = GetTransactionsUseCase(txRepo);
       final saveTransaction = SaveTransactionUseCase(txRepo);
+      final deleteTransaction = DeleteTransactionUseCase(txRepo);
       final getClients = GetClientsUseCase(
         MockClientRepo(clientes: [cliente1, clienteInactivo]),
       );
@@ -530,6 +532,7 @@ void main() {
             getTransactionsUseCase: getTransactions,
             getClientsUseCase: getClients,
             saveTransactionUseCase: saveTransaction,
+            deleteTransactionUseCase: deleteTransaction,
           ),
         ),
       );
@@ -592,6 +595,154 @@ void main() {
       expect(find.text('Total Aportado (1):'), findsOneWidget);
       expect(find.text('Carlos Santana'), findsOneWidget);
       expect(find.text('\$ 5.000.000,00'), findsNWidgets(2));
+
+      // -----------------------------------------------------------------------
+      // Restricción 1: Un mismo cliente no puede aportar más de una vez por instrumento
+      // -----------------------------------------------------------------------
+      await tester.tap(find.text('Agregar Aporte'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Todos los clientes activos ya cuentan con un aporte registrado en este instrumento.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byTooltip('Cerrar'));
+      await tester.pumpAndSettle();
+
+      // Limpiar cualquier SnackBar flotante para que no intercepte el tap de los botones inferiores
+      ScaffoldMessenger.of(tester.element(find.byType(Scaffold))).clearSnackBars();
+      await tester.pumpAndSettle();
+
+      // -----------------------------------------------------------------------
+      // Control 2: Los aportes se pueden modificar
+      // -----------------------------------------------------------------------
+      await tester.ensureVisible(find.text('Modificar'));
+      await tester.tap(find.text('Modificar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Modificar Aporte de Inversión'), findsOneWidget);
+      expect(find.text('Carlos Santana - 10203040'), findsOneWidget);
+      expect(find.text('Disponible Máximo para este Aporte'), findsOneWidget);
+
+      final valorModificarField = find.widgetWithText(AppTextField, 'Valor a Invertir (\$)');
+      await tester.enterText(valorModificarField, '8000000');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Actualizar Aporte'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Modificar Aporte de Inversión'), findsNothing);
+      expect(find.text('\$ 8.000.000,00'), findsNWidgets(2));
+
+      // Limpiar cualquier SnackBar flotante de actualización
+      ScaffoldMessenger.of(tester.element(find.byType(Scaffold))).clearSnackBars();
+      await tester.pumpAndSettle();
+
+      // -----------------------------------------------------------------------
+      // Control 3: Los aportes se pueden eliminar
+      // -----------------------------------------------------------------------
+      await tester.ensureVisible(find.text('Eliminar'));
+      await tester.tap(find.text('Eliminar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Eliminar Aporte'), findsOneWidget);
+      expect(find.textContaining('El monto será reintegrado automáticamente'), findsOneWidget);
+
+      // Confirmar eliminación en el diálogo
+      await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
+      await tester.pumpAndSettle();
+
+      // La lista debe quedar nuevamente vacía
+      expect(find.text('No hay transacciones de inversión vinculadas a este instrumento todavía.'), findsOneWidget);
+    });
+
+    testWidgets('Restricción 4: En estado Activo los aportes quedan bloqueados para creación, edición o eliminación', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final cliente1 = Client(
+        id: 'cli-001',
+        nombre: 'Carlos Santana',
+        documento: '10203040',
+        correo: 'carlos@example.com',
+        telefono: '3001234567',
+      );
+
+      final aporteExistente = Transaction(
+        id: 'tx-inv-1',
+        clienteId: 'cli-001',
+        clienteNombre: 'Carlos Santana',
+        tipo: TransactionType.inversion,
+        valor: 10000000,
+        fecha: DateTime(2026, 3, 2),
+        instrumentoId: 'inst-activo-1',
+      );
+
+      final instActivo = Instrument(
+        id: 'inst-activo-1',
+        numero: 'CDT-2026-ACTIVO',
+        entidad: 'Davivienda',
+        fechaApertura: DateTime(2026, 3, 1),
+        dias: 90,
+        tasaIea: 12.0,
+        valorInvertido: 10000000,
+        rendimientoTProyec: 300000,
+        retencionPorcentaje: 4.00,
+        observacion: 'Instrumento ya activo',
+        estado: 'Activo',
+        fechaCreacion: DateTime(2026, 3, 1),
+      );
+
+      final repoInst = MockInstrumentRepo();
+      final saveUseCase = SaveInstrumentUseCase(repoInst);
+      final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getBanks = GetBanksUseCase(MockBankRepo());
+      final txRepo = MockTransactionRepo(transacciones: [aporteExistente]);
+      final getTransactions = GetTransactionsUseCase(txRepo);
+      final saveTransaction = SaveTransactionUseCase(txRepo);
+      final deleteTransaction = DeleteTransactionUseCase(txRepo);
+      final getClients = GetClientsUseCase(MockClientRepo(clientes: [cliente1]));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          home: InstrumentFormScreen(
+            user: testUser,
+            instrument: instActivo,
+            saveInstrumentUseCase: saveUseCase,
+            getProfileUseCase: getProfile,
+            getBanksUseCase: getBanks,
+            getTransactionsUseCase: getTransactions,
+            getClientsUseCase: getClients,
+            saveTransactionUseCase: saveTransaction,
+            deleteTransactionUseCase: deleteTransaction,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Navegar a Tab 2: Aportes
+      await tester.tap(find.text('Aportes'));
+      await tester.pumpAndSettle();
+
+      // 1. El botón "Agregar Aporte" no debe estar presente
+      expect(find.text('Agregar Aporte'), findsNothing);
+
+      // 2. Debe mostrarse el banner informativo de bloqueo
+      expect(
+        find.textContaining('El instrumento está en estado "Activo". Los aportes solo pueden agregarse, modificarse o eliminarse mientras esté en "Borrador".'),
+        findsOneWidget,
+      );
+
+      // 3. La tarjeta muestra el aporte pero NO los botones de Modificar ni Eliminar
+      expect(find.text('Carlos Santana'), findsOneWidget);
+      expect(find.text('Modificar'), findsNothing);
+      expect(find.text('Eliminar'), findsNothing);
     });
   });
 }
