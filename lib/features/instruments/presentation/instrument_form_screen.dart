@@ -505,8 +505,6 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                           titulo: _esEdicion
                               ? 'Editar Instrumento'
                               : 'Nuevo Instrumento',
-                          subtitulo:
-                              'Parámetros financieros y rendimiento proyectado',
                           onBack: () => Navigator.pop(context),
                         ),
                         Expanded(

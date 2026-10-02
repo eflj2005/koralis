@@ -461,8 +461,6 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                       children: [
                         AppHeaderTitle(
                           titulo: 'Instrumentos',
-                          subtitulo:
-                              'Portafolio de colocaciones y rendimientos',
                           onBack: () => Navigator.pushReplacementNamed(
                             context,
                             '/dashboard',

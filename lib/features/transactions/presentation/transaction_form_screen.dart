@@ -425,9 +425,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                       children: [
                         AppHeaderTitle(
                           titulo: _esEdicion ? 'Detalle Transacción' : 'Nueva Transacción',
-                          subtitulo: _esAutomatica
-                              ? 'Transacción generada automáticamente'
-                              : 'Registro de movimiento de cuenta',
                           onBack: () => Navigator.pop(context),
                         ),
                         Expanded(

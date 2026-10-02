@@ -546,7 +546,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       children: [
                         AppHeaderTitle(
                           titulo: 'Transacciones',
-                          subtitulo: 'Historial de ingresos, retiros y colocaciones',
                           onBack: () => Navigator.pushReplacementNamed(
                             context,
                             '/dashboard',
