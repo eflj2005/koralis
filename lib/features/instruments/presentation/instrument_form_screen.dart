@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:core/core.dart';
+import 'package:core/core.dart' hide Transaction;
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
 import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:koralis_app/features/clients/domain/entities/client.dart';
+import 'package:koralis_app/features/clients/domain/usecases/get_clients_usecase.dart';
+import 'package:koralis_app/features/clients/data/repositories/client_repository_impl.dart';
+import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
+import 'package:koralis_app/features/transactions/domain/usecases/get_transactions_usecase.dart';
+import 'package:koralis_app/features/transactions/domain/usecases/save_transaction_usecase.dart';
+import 'package:koralis_app/features/transactions/data/repositories/transaction_repository_impl.dart';
 import '../domain/entities/instrument.dart';
 import '../domain/usecases/save_instrument_usecase.dart';
 import '../domain/repositories/instrument_repository.dart';
@@ -29,6 +36,9 @@ class InstrumentFormScreen extends StatefulWidget {
   final SaveInstrumentUseCase? saveInstrumentUseCase;
   final GetProfileUseCase? getProfileUseCase;
   final GetBanksUseCase? getBanksUseCase;
+  final GetTransactionsUseCase? getTransactionsUseCase;
+  final GetClientsUseCase? getClientsUseCase;
+  final SaveTransactionUseCase? saveTransactionUseCase;
 
   const InstrumentFormScreen({
     super.key,
@@ -37,6 +47,9 @@ class InstrumentFormScreen extends StatefulWidget {
     this.saveInstrumentUseCase,
     this.getProfileUseCase,
     this.getBanksUseCase,
+    this.getTransactionsUseCase,
+    this.getClientsUseCase,
+    this.saveTransactionUseCase,
   });
 
   @override
@@ -65,6 +78,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
   late final GetProfileUseCase _getProfileUseCase;
   late final GetBanksUseCase _getBanksUseCase;
   Future<Profile>? _profileFuture;
+  Future<List<Transaction>>? _transaccionesAsociadasFuture;
 
   List<Bank> _bancos = [];
   bool _cargandoBancos = true;
@@ -85,6 +99,10 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
         widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
     _getBanksUseCase =
         widget.getBanksUseCase ?? GetBanksUseCase(BankRepositoryImpl());
+
+    if (_esEdicion) {
+      _transaccionesAsociadasFuture = _cargarTransaccionesAsociadas();
+    }
 
     final actual = widget.instrument;
     _numeroCtrl = TextEditingController(text: actual?.numero ?? '');
@@ -135,6 +153,39 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
         setState(() => _cargandoBancos = false);
       }
     }
+  }
+
+  /// Carga asíncronamente las transacciones registradas para obtener las inversiones asociadas.
+  Future<List<Transaction>> _cargarTransaccionesAsociadas() async {
+    try {
+      final useCase = widget.getTransactionsUseCase ??
+          GetTransactionsUseCase(TransactionRepositoryImpl());
+      return await useCase.execute();
+    } catch (_) {
+      // En pruebas unitarias donde Firebase no esté inicializado o no haya mock,
+      // retorna una lista vacía de forma segura sin provocar excepciones.
+      return [];
+    }
+  }
+
+  /// Carga asíncronamente los clientes registrados en la colección 'clients'.
+  Future<List<Client>> _cargarClientesDisponibles() async {
+    try {
+      final useCase = widget.getClientsUseCase ??
+          GetClientsUseCase(ClientRepositoryImpl());
+      return await useCase.execute();
+    } catch (_) {
+      // En pruebas unitarias donde Firebase no esté inicializado o no haya mock,
+      // retorna una lista vacía de forma segura.
+      return [];
+    }
+  }
+
+  /// Guarda una transacción de inversión asociada al cliente y a este instrumento.
+  Future<void> _ejecutarGuardarAporte(Transaction tx) async {
+    final useCase = widget.saveTransactionUseCase ??
+        SaveTransactionUseCase(TransactionRepositoryImpl());
+    await useCase.execute(tx);
   }
 
   /// Genera los items de la lista desplegable de entidades financieras.
@@ -508,14 +559,64 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                           onBack: () => Navigator.pop(context),
                         ),
                         Expanded(
-                          child: SingleChildScrollView(
-                            physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.only(bottom: 40.0),
-                            child: Form(
-                              key: _formKey,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
+                          child: DefaultTabController(
+                            length: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // --- Barra de Pestañas Segmentada ---
+                                Container(
+                                  height: 42,
+                                  margin: const EdgeInsets.only(bottom: 14),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.surfaceContainerHighest
+                                        .withValues(alpha: 0.35),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: TabBar(
+                                    indicator: BoxDecoration(
+                                      color: colorScheme.primary,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    indicatorSize: TabBarIndicatorSize.tab,
+                                    dividerColor: Colors.transparent,
+                                    labelColor: Colors.white,
+                                    unselectedLabelColor:
+                                        colorScheme.onSurfaceVariant,
+                                    labelStyle: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                    unselectedLabelStyle: const TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 13,
+                                    ),
+                                    tabs: const [
+                                      Tab(text: 'Generalidades'),
+                                      Tab(text: 'Aportes'),
+                                      Tab(text: 'Resultados'),
+                                    ],
+                                  ),
+                                ),
+
+                                // --- Contenido de las Pestañas ---
+                                Expanded(
+                                  child: TabBarView(
+                                    physics: const BouncingScrollPhysics(),
+                                    children: [
+                                      // Tab 1: Generalidades (Formulario base)
+                                      SingleChildScrollView(
+                                        physics: const BouncingScrollPhysics(),
+                                        padding: const EdgeInsets.only(
+                                          top: 10.0,
+                                          bottom: 40.0,
+                                        ),
+                                        child: Form(
+                                          key: _formKey,
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children: [
                                   // --- Sección 1: Datos Base ---
                                   AppTextField(
                                     controller: _numeroCtrl,
@@ -698,35 +799,39 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                   ),
                                   const SizedBox(height: 14),
 
-                                  // --- Valor Invertido ---
-                                  AppTextField(
-                                    controller: _valorInvertidoCtrl,
-                                    label: 'Valor Invertido (\$)',
-                                    hint: 'Ej. 50000000',
-                                    icono: Icons.attach_money_rounded,
-                                    tipoTeclado:
-                                        const TextInputType.numberWithOptions(
-                                          decimal: true,
-                                        ),
-                                    validator: (val) {
-                                      if (val == null ||
-                                          double.tryParse(
-                                                val.replaceAll(',', '.').trim(),
-                                              ) ==
-                                              null) {
-                                        return 'Ingresa el capital invertido';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 14),
-
-                                  // --- Fila: Tasa I.E.A. y Rendimiento T. Proyectado ---
+                                  // --- Fila: Valor Invertido y Tasa I.E.A. ---
                                   Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      // Entrada para el porcentaje de tasa I.E.A. (tamaño compacto: flex 2 / 40%)
+                                      // Entrada para el capital invertido (flex 3 / ~60%)
+                                      Expanded(
+                                        flex: 3,
+                                        child: AppTextField(
+                                          controller: _valorInvertidoCtrl,
+                                          label: 'Valor Invertido (\$)',
+                                          hint: 'Ej. 50000000',
+                                          icono: Icons.attach_money_rounded,
+                                          tipoTeclado:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          validator: (val) {
+                                            if (val == null ||
+                                                double.tryParse(
+                                                      val
+                                                          .replaceAll(',', '.')
+                                                          .trim(),
+                                                    ) ==
+                                                    null) {
+                                              return 'Ingresa el capital invertido';
+                                            }
+                                            return null;
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      // Entrada para el porcentaje de tasa I.E.A. (flex 2 / ~40%)
                                       Expanded(
                                         flex: 2,
                                         child: AppTextField(
@@ -752,8 +857,16 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                           },
                                         ),
                                       ),
-                                      const SizedBox(width: 10),
-                                      // Entrada para el valor monetario de rendimiento proyectado (mayor tamaño: flex 3 / 60%)
+                                    ],
+                                  ),
+                                  const SizedBox(height: 14),
+
+                                  // --- Fila: Rendimiento Proyectado y Retención % ---
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // Entrada para el valor monetario de rendimiento proyectado (flex 3 / ~60%)
                                       Expanded(
                                         flex: 3,
                                         child: AppTextField(
@@ -779,209 +892,22 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                           },
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 18),
-
-                                  // ===============================================================
-                                  // BLOQUE FINANCIERO REACTIVO: CÁLCULOS EN TIEMPO REAL
-                                  // ===============================================================
-                                  Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: colorScheme.surface,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: colorScheme.outline.withValues(
-                                          alpha: 0.25,
+                                      const SizedBox(width: 10),
+                                      // Entrada para el porcentaje de retención (flex 2 / ~40%)
+                                      Expanded(
+                                        flex: 2,
+                                        child: AppTextField(
+                                          controller: _retencionPorcentajeCtrl,
+                                          label: 'Retención %',
+                                          hint: '4.00',
+                                          icono: Icons.price_check_rounded,
+                                          tipoTeclado:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
                                         ),
                                       ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.04,
-                                          ),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Icon(
-                                              Icons.analytics_outlined,
-                                              size: 20,
-                                              color: colorScheme.primary,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                'Resumen Financiero Calculado',
-                                                style: theme
-                                                    .textTheme
-                                                    .titleSmall
-                                                    ?.copyWith(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 14),
-
-                                        // 1. Valor Recibido
-                                        _buildFilaMetrica(
-                                          titulo: 'Valor Recibido:',
-                                          valor: _formatearMoneda(
-                                            _valorRecibido,
-                                          ),
-                                          colorTexto: colorScheme.onSurface,
-                                          esNegrita: true,
-                                        ),
-                                        const Divider(height: 18),
-
-                                        // 2. Rendimientos
-                                        _buildFilaMetrica(
-                                          titulo: 'Rendimientos Brutos:',
-                                          valor: _formatearMoneda(
-                                            _rendimientos,
-                                          ),
-                                          colorTexto: colorScheme.primary,
-                                          esNegrita: true,
-                                        ),
-                                        const Divider(height: 18),
-
-                                        // 3. Retención % (Editable) y Retención $
-                                        Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.center,
-                                          children: [
-                                            Expanded(
-                                              flex: 3,
-                                              child: AppTextField(
-                                                controller:
-                                                    _retencionPorcentajeCtrl,
-                                                label: 'Retención %',
-                                                hint: '4.00',
-                                                icono:
-                                                    Icons.price_check_rounded,
-                                                tipoTeclado:
-                                                    const TextInputType.numberWithOptions(
-                                                      decimal: true,
-                                                    ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              flex: 4,
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.end,
-                                                children: [
-                                                  Text(
-                                                    'Retención (\$):',
-                                                    style: theme
-                                                        .textTheme
-                                                        .bodySmall
-                                                        ?.copyWith(
-                                                          color: colorScheme
-                                                              .onSurfaceVariant,
-                                                        ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    _formatearMoneda(
-                                                      _retencionValor,
-                                                    ),
-                                                    style: TextStyle(
-                                                      color: colorScheme.error,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 14,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 14),
-
-                                        // 4. Valor Final Rend. (Destacado)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 12,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.green.withValues(
-                                              alpha: 0.12,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.green.withValues(
-                                                alpha: 0.4,
-                                              ),
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    const Text(
-                                                      'Valor Final Rend.',
-                                                      style: TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color: Colors.green,
-                                                        fontSize: 13,
-                                                      ),
-                                                    ),
-                                                    Text(
-                                                      'Rendimiento Neto Disponible',
-                                                      style: theme
-                                                          .textTheme
-                                                          .bodySmall
-                                                          ?.copyWith(
-                                                            fontSize: 10,
-                                                            color: Colors
-                                                                .green
-                                                                .shade800,
-                                                          ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              FittedBox(
-                                                fit: BoxFit.scaleDown,
-                                                child: Text(
-                                                  _formatearMoneda(
-                                                    _valorFinalRend,
-                                                  ),
-                                                  style: TextStyle(
-                                                    color:
-                                                        Colors.green.shade800,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 16,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                    ],
                                   ),
                                   const SizedBox(height: 18),
 
@@ -1160,13 +1086,25 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                               ),
                             ),
                           ),
-                        ),
-                      ],
+
+                          // Tab 2: Aportes
+                          _buildTabAportes(context),
+
+                          // Tab 3: Resultados
+                          _buildTabResultados(context),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
+          ],
+        ),
+      ),
+    ),
+  ],
+),
 
             // ===============================================================
             // 2. NAVEGACIÓN LATERAL MODULAR DEL CORE
@@ -1239,6 +1177,753 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Abre la hoja modal emergente para registrar un nuevo aporte de cliente a este instrumento.
+  Future<void> _abrirModalNuevoAporte(BuildContext context) async {
+    if (!_esEdicion || widget.instrument == null) {
+      AppMessenger.showInfoSnackBar(
+        context,
+        'Debes registrar el instrumento antes de asociar aportes de clientes',
+      );
+      return;
+    }
+
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final valorAporteCtrl = TextEditingController();
+    final modalFormKey = GlobalKey<FormState>();
+
+    List<Client> clientesDisponibles = [];
+    bool cargandoClientes = true;
+    Client? clienteSeleccionado;
+    bool guardandoAporte = false;
+    String? errorCarga;
+
+    await showAppModalBottomSheet(
+      context,
+      child: StatefulBuilder(
+        builder: (modalContext, setModalState) {
+          if (cargandoClientes && errorCarga == null) {
+            _cargarClientesDisponibles().then((lista) {
+              if (modalContext.mounted) {
+                setModalState(() {
+                  clientesDisponibles =
+                      lista.where((c) => c.estado == 'Activo').toList();
+                  cargandoClientes = false;
+                });
+              }
+            }).catchError((err) {
+              if (modalContext.mounted) {
+                setModalState(() {
+                  errorCarga = 'No fue posible consultar clientes: $err';
+                  cargandoClientes = false;
+                });
+              }
+            });
+          }
+
+          return Material(
+            color: Colors.transparent,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: Form(
+                key: modalFormKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Encabezado del modal
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.savings_outlined,
+                            color: colorScheme.primary,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Nuevo Aporte de Inversión',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Instrumento: ${widget.instrument!.numero}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => Navigator.pop(modalContext),
+                          tooltip: 'Cerrar',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    const SizedBox(height: 16),
+
+                    if (cargandoClientes)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24.0),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (errorCarga != null)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          errorCarga!,
+                          style: TextStyle(color: colorScheme.error, fontSize: 13),
+                        ),
+                      )
+                    else if (clientesDisponibles.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline_rounded,
+                                color: colorScheme.onSurfaceVariant),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'No hay clientes activos disponibles en el sistema.',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else ...[
+                      // 1. Selector de Cliente
+                      AppDropdownField<String>(
+                        label: 'Cliente Inversor *',
+                        hint: 'Selecciona el cliente...',
+                        icono: Icons.person_search_rounded,
+                        value: clienteSeleccionado?.id,
+                        items: clientesDisponibles.map((c) {
+                          final docInfo =
+                              c.documento.isNotEmpty ? ' - ${c.documento}' : '';
+                          return DropdownMenuItem<String>(
+                            value: c.id,
+                            child: Text(
+                              '${c.nombre}$docInfo',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (id) {
+                          setModalState(() {
+                            clienteSeleccionado =
+                                clientesDisponibles.firstWhere((c) => c.id == id);
+                          });
+                        },
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Selecciona un cliente';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+
+                      // 2. Tarjeta Informativa de Saldo Disponible
+                      if (clienteSeleccionado != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: clienteSeleccionado!.saldoDisponible > 0
+                                ? Colors.green.withValues(alpha: 0.1)
+                                : Colors.amber.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: clienteSeleccionado!.saldoDisponible > 0
+                                  ? Colors.green.withValues(alpha: 0.35)
+                                  : Colors.amber.shade700,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                clienteSeleccionado!.saldoDisponible > 0
+                                    ? Icons.account_balance_wallet_outlined
+                                    : Icons.warning_amber_rounded,
+                                color: clienteSeleccionado!.saldoDisponible > 0
+                                    ? Colors.green.shade800
+                                    : Colors.amber.shade900,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      clienteSeleccionado!.saldoDisponible > 0
+                                          ? 'Saldo Disponible del Cliente'
+                                          : 'Sin Saldo Disponible',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: clienteSeleccionado!.saldoDisponible > 0
+                                            ? Colors.green.shade900
+                                            : Colors.amber.shade900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _formatearMoneda(
+                                          clienteSeleccionado!.saldoDisponible),
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: clienteSeleccionado!.saldoDisponible > 0
+                                            ? Colors.green.shade900
+                                            : Colors.amber.shade900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+
+                      // 3. Valor a Invertir
+                      AppTextField(
+                        controller: valorAporteCtrl,
+                        label: 'Valor a Invertir (\$)',
+                        hint: 'Ej. 5000000',
+                        icono: Icons.attach_money_rounded,
+                        tipoTeclado: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Ingresa el valor a invertir';
+                          }
+                          final monto =
+                              double.tryParse(val.replaceAll(',', '.').trim());
+                          if (monto == null || monto <= 0) {
+                            return 'Ingresa un valor mayor a cero';
+                          }
+                          if (clienteSeleccionado != null &&
+                              monto > clienteSeleccionado!.saldoDisponible) {
+                            return 'Supera el disponible (${_formatearMoneda(clienteSeleccionado!.saldoDisponible)})';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 22),
+
+                      // 4. Botón de Confirmación
+                      AppButton(
+                        texto: guardandoAporte
+                            ? 'Registrando...'
+                            : 'Registrar Aporte',
+                        icono: Icons.check_circle_outline_rounded,
+                        onPressed: guardandoAporte
+                            ? null
+                            : () async {
+                                if (!modalFormKey.currentState!.validate()) return;
+                                if (clienteSeleccionado == null) return;
+
+                                final monto = double.parse(
+                                  valorAporteCtrl.text
+                                      .replaceAll(',', '.')
+                                      .trim(),
+                                );
+
+                                setModalState(() => guardandoAporte = true);
+
+                                try {
+                                  final nuevaTx = Transaction(
+                                    id: '',
+                                    clienteId: clienteSeleccionado!.id,
+                                    clienteNombre: clienteSeleccionado!.nombre,
+                                    tipo: TransactionType.inversion,
+                                    valor: monto,
+                                    fecha: DateTime.now(),
+                                    instrumentoId: widget.instrument!.id,
+                                    observacion:
+                                        'Aporte a instrumento ${widget.instrument!.numero}',
+                                  );
+
+                                  await _ejecutarGuardarAporte(nuevaTx);
+
+                                  if (context.mounted) {
+                                    Navigator.pop(modalContext);
+                                    setState(() {
+                                      _transaccionesAsociadasFuture =
+                                          _cargarTransaccionesAsociadas();
+                                    });
+                                    AppMessenger.showSuccessSnackBar(
+                                      context,
+                                      'Aporte de ${_formatearMoneda(monto)} registrado para ${clienteSeleccionado!.nombre}',
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (modalContext.mounted) {
+                                    setModalState(() => guardandoAporte = false);
+                                    AppMessenger.showErrorSnackBar(
+                                      modalContext,
+                                      'Error al registrar aporte: $e',
+                                    );
+                                  }
+                                }
+                              },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Construye la pestaña 2 (Aportes):
+  /// Muestra la lista de clientes que han realizado transacciones de tipo "Inversión" asociadas a este instrumento.
+  Widget _buildTabAportes(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(top: 10.0, bottom: 40.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.people_outline_rounded,
+                size: 20,
+                color: colorScheme.secondary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Aportes de Clientes (Inversión)',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (_esEdicion) ...[
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () => _abrirModalNuevoAporte(context),
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text('Agregar Aporte'),
+                  style: ElevatedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          if (!_esEdicion)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.25,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    color: colorScheme.onSurfaceVariant,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Los clientes y sus aportes de inversión se asociarán una vez que el instrumento sea registrado.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            FutureBuilder<List<Transaction>>(
+              future: _transaccionesAsociadasFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24.0),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  return Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colorScheme.error.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Error al consultar aportes asociados: ${snapshot.error}',
+                      style: TextStyle(
+                        color: colorScheme.error,
+                        fontSize: 12,
+                      ),
+                    ),
+                  );
+                }
+
+                final todas = snapshot.data ?? [];
+                final instId = widget.instrument!.id;
+                final instNum = widget.instrument!.numero;
+
+                final inversiones = todas.where((t) {
+                  final esInversion = t.tipo == TransactionType.inversion;
+                  final ref = t.instrumentoId ?? '';
+                  final coincide =
+                      ref.isNotEmpty && (ref == instId || ref == instNum);
+                  return esInversion && coincide;
+                }).toList();
+
+                if (inversiones.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.25,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.person_off_outlined,
+                          color: colorScheme.onSurfaceVariant,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'No hay transacciones de inversión vinculadas a este instrumento todavía.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                final totalAportado = inversiones.fold<double>(
+                  0.0,
+                  (sum, tx) => sum + tx.valor,
+                );
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Resumen general de aportes acumulados
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.35,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Total Aportado (${inversiones.length}):',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _formatearMoneda(totalAportado),
+                              style: TextStyle(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ...inversiones.map((tx) {
+                      final inicial = tx.clienteNombre.isNotEmpty
+                          ? tx.clienteNombre[0].toUpperCase()
+                          : '?';
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: colorScheme.outline.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: colorScheme.primary.withValues(
+                                alpha: 0.15,
+                              ),
+                              child: Text(
+                                inicial,
+                                style: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    tx.clienteNombre.isNotEmpty
+                                        ? tx.clienteNombre
+                                        : 'Cliente',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _formatearFecha(tx.fecha),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              _formatearMoneda(tx.valor),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.primary,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Construye la pestaña 3 (Resultados):
+  /// - Resumen Financiero Calculado reactivo (Valor Recibido, Rendimientos Brutos, Retención $, Valor Final Rend.)
+  Widget _buildTabResultados(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(top: 10.0, bottom: 40.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ===============================================================
+          // BLOQUE FINANCIERO REACTIVO: CÁLCULOS EN TIEMPO REAL
+          // ===============================================================
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: colorScheme.outline.withValues(alpha: 0.25),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.analytics_outlined,
+                      size: 20,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Resumen Financiero Calculado',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // 1. Valor Recibido
+                _buildFilaMetrica(
+                  titulo: 'Valor Recibido:',
+                  valor: _formatearMoneda(_valorRecibido),
+                  colorTexto: colorScheme.onSurface,
+                  esNegrita: true,
+                ),
+                const Divider(height: 18),
+
+                // 2. Rendimientos
+                _buildFilaMetrica(
+                  titulo: 'Rendimientos Brutos:',
+                  valor: _formatearMoneda(_rendimientos),
+                  colorTexto: colorScheme.primary,
+                  esNegrita: true,
+                ),
+                const Divider(height: 18),
+
+                // 3. Retención en Fuente ($)
+                _buildFilaMetrica(
+                  titulo:
+                      'Retención (${_retencionPorcentaje.toStringAsFixed(2)}%):',
+                  valor: _formatearMoneda(_retencionValor),
+                  colorTexto: colorScheme.error,
+                  esNegrita: true,
+                ),
+                const SizedBox(height: 14),
+
+                // 4. Valor Final Rend. (Destacado)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.green.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Valor Final Rend.',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              'Rendimiento Neto Disponible',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 10,
+                                color: Colors.green.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          _formatearMoneda(_valorFinalRend),
+                          style: TextStyle(
+                            color: Colors.green.shade800,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
