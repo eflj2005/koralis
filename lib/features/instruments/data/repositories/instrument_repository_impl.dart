@@ -73,6 +73,11 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
 
   @override
   Future<void> saveInstrument(Instrument instrument) async {
+    // Si el instrumento no posee un identificador previo, se genera uno alfanumérico nativo de Firestore
+    final docId = instrument.id.trim().isNotEmpty
+        ? instrument.id.trim()
+        : _firestore.newDocumentId(FirebaseFirestoreConfig.colInstrumentos);
+
     final Map<String, dynamic> datos = {
       'numero': instrument.numero.trim(),
       'entidad': instrument.entidad.trim(),
@@ -91,7 +96,7 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
     await _firestore.setDocument(
       collectionPath: FirebaseFirestoreConfig.colInstrumentos,
       data: datos,
-      docId: instrument.id.isNotEmpty ? instrument.id : null,
+      docId: docId,
     );
   }
 

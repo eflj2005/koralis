@@ -13,6 +13,12 @@ class FirestoreService {
   /// Obtiene la instancia subyacente de [FirebaseFirestore].
   FirebaseFirestore get instance => _firestore;
 
+  /// Genera un identificador único alfanumérico estándar de Cloud Firestore (20 caracteres)
+  /// para un nuevo documento en la colección [collectionPath] sin persistirlo inmediatamente.
+  String newDocumentId(String collectionPath) {
+    return _firestore.collection(collectionPath).doc().id;
+  }
+
   /// Crea un nuevo documento en la colección [collectionPath].
   /// 
   /// Si [docId] es nulo o no se especifica, Firestore generará un ID único de forma automática.

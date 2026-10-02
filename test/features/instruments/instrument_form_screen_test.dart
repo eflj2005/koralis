@@ -49,11 +49,14 @@ class MockInstrumentRepo implements InstrumentRepository {
 
   @override
   Future<void> saveInstrument(Instrument instrument) async {
-    final idx = items.indexWhere((i) => i.id == instrument.id);
+    final instrumentConId = instrument.id.trim().isNotEmpty
+        ? instrument
+        : instrument.copyWith(id: 'mock_inst_${items.length + 1}');
+    final idx = items.indexWhere((i) => i.id == instrumentConId.id);
     if (idx >= 0) {
-      items[idx] = instrument;
+      items[idx] = instrumentConId;
     } else {
-      items.add(instrument);
+      items.add(instrumentConId);
     }
   }
 

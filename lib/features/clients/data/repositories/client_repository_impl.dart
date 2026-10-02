@@ -67,6 +67,11 @@ class ClientRepositoryImpl implements ClientRepository {
 
   @override
   Future<void> addClient(Client client) async {
+    // Si el cliente no posee un identificador previo, se genera uno alfanumérico nativo de Firestore
+    final docId = client.id.trim().isNotEmpty
+        ? client.id.trim()
+        : _firestore.newDocumentId(FirebaseFirestoreConfig.colClientes);
+
     final Map<String, dynamic> datos = {
       'nombre': client.nombre.trim(),
       'documento': client.documento.trim(),
@@ -86,7 +91,7 @@ class ClientRepositoryImpl implements ClientRepository {
     await _firestore.setDocument(
       collectionPath: FirebaseFirestoreConfig.colClientes,
       data: datos,
-      docId: client.id.isNotEmpty ? client.id : null,
+      docId: docId,
     );
   }
 }

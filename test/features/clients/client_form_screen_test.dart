@@ -20,11 +20,14 @@ class MockClientRepo implements ClientRepository {
 
   @override
   Future<void> addClient(Client client) async {
-    final idx = clientes.indexWhere((c) => c.id == client.id);
+    final clientConId = client.id.trim().isNotEmpty
+        ? client
+        : client.copyWith(id: 'mock_client_${clientes.length + 1}');
+    final idx = clientes.indexWhere((c) => c.id == clientConId.id);
     if (idx >= 0) {
-      clientes[idx] = client;
+      clientes[idx] = clientConId;
     } else {
-      clientes.add(client);
+      clientes.add(clientConId);
     }
   }
 }

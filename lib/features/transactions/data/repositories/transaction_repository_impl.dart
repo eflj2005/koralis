@@ -104,9 +104,10 @@ class TransactionRepositoryImpl implements TransactionRepository {
           [],
     );
 
+    // Asignar ID existente o generar uno alfanumérico estándar de Firestore
     final txId = transaction.id.trim().isNotEmpty
         ? transaction.id.trim()
-        : 'tx_${DateTime.now().millisecondsSinceEpoch}_${rawList.length + 1}';
+        : _firestore.newDocumentId(FirebaseFirestoreConfig.campoTransacciones);
 
     final clienteNombre = transaction.clienteNombre.trim().isNotEmpty
         ? transaction.clienteNombre.trim()

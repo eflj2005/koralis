@@ -256,9 +256,9 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
 
     setState(() => _guardando = true);
 
-    final id =
-        widget.instrument?.id ??
-        DateTime.now().millisecondsSinceEpoch.toString();
+    // Si es edición conserva el ID existente, si es nuevo se envía vacío para que
+    // la capa de datos asigne el identificador alfanumérico nativo de Cloud Firestore.
+    final id = widget.instrument?.id ?? '';
     final fechaCreacion = widget.instrument?.fechaCreacion ?? DateTime.now();
 
     final instrumento = Instrument(

@@ -15,6 +15,14 @@ class FakeFirestoreService implements FirestoreService {
     };
   }
 
+  int _idCounter = 0;
+
+  @override
+  String newDocumentId(String collectionPath) {
+    _idCounter++;
+    return 'fake_${collectionPath}_$_idCounter';
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 

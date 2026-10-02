@@ -103,7 +103,9 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
 
     setState(() => _guardando = true);
 
-    final id = widget.client?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
+    // Si es edición conserva el ID existente, si es nuevo se envía vacío para que
+    // la capa de datos asigne el identificador alfanumérico nativo de Cloud Firestore.
+    final id = widget.client?.id ?? '';
     final fechaCreacion = widget.client?.fechaCreacion ?? DateTime.now();
 
     final clienteAguardar = Client(
