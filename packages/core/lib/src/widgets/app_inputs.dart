@@ -253,8 +253,10 @@ class AppDropdownField<T> extends StatelessWidget {
 
     final theme = Theme.of(context);
 
+    // Se omite 'key: ValueKey(value)' para preservar la identidad del widget y su FocusNode
+    // durante el cierre de la ruta del menú desplegable, previniendo bloqueos (ANR) en Android.
+    // En Flutter moderno, didUpdateWidget sincroniza 'initialValue' automáticamente sin destruir el estado.
     return DropdownButtonFormField<T>(
-      key: ValueKey(value),
       initialValue: value,
       items: items,
       onChanged: isLoading ? null : onChanged,
