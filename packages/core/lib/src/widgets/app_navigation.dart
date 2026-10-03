@@ -220,6 +220,10 @@ class AppFolderTabBar extends StatelessWidget {
       maxLines: 1,
     )..layout();
 
+    final double anchoTexto = textPainter.width;
+    // Liberación explícita del objeto nativo de diseño tipográfico en el motor (Skia/Impeller)
+    textPainter.dispose();
+
     const double tamanoIcono = 20.0;
     const double separacionIconoTexto = 8.0;
     const double paddingSuperior = 12.0;
@@ -228,7 +232,7 @@ class AppFolderTabBar extends StatelessWidget {
     const double altoMinimo = 110.0;
 
     final double altoCalculado = paddingSuperior +
-        textPainter.width +
+        anchoTexto +
         separacionIconoTexto +
         tamanoIcono +
         paddingInferior +
