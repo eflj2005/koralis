@@ -1,0 +1,83 @@
+rules_version = '2';
+
+// ==============================================================================
+// Reglas de Seguridad de Cloud Firestore para Koralis
+//
+// Arquitectura Multiusuario con Aislamiento Estricto por Usuario:
+// 1. Cada usuario solo puede leer, crear, modificar y eliminar sus propios
+//    clientes, transacciones e instrumentos bajo la ruta jerárquica:
+//    /users/{userId}/{document=**}
+// 2. La colección de bancos (/banks/{bankId}) es de naturaleza global:
+//    Cualquier usuario autenticado puede consultarla para listar bancos.
+// 3. Los perfiles (/profiles/{userId}) están protegidos por el UID de sesión.
+// ==============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --------------------------------------------------------------------------
+    // Funciones Auxiliares de Seguridad
+    // --------------------------------------------------------------------------
+
+    /// Verifica si la petición proviene de un usuario con sesión activa en Firebase Auth.
+    function estaAutenticado() {
+      return request.auth != null;
+    }
+
+    /// Verifica si el usuario autenticado es el propietario del recurso.
+    function esPropietario(userId) {
+      return estaAutenticado() && request.auth.uid == userId;
+    }
+
+    // --------------------------------------------------------------------------
+    // 1. Catálogo Maestro Global de Bancos
+    // --------------------------------------------------------------------------
+    // Accesible para lectura por todos los usuarios autenticados.
+    // La escritura queda restringida para evitar modificaciones no autorizadas.
+    match /banks/{bankId} {
+      allow read: if estaAutenticado();
+      allow write: if false; // Solo administradores mediante consola de Firebase
+    }
+
+    // --------------------------------------------------------------------------
+    // 2. Perfiles de Usuario
+    // --------------------------------------------------------------------------
+    // Cada usuario solo puede consultar o modificar su propio documento de perfil.
+    match /profiles/{userId} {
+      allow read, write: if esPropietario(userId);
+    }
+
+    // --------------------------------------------------------------------------
+    // 3. Árbol de Datos Aislado por Usuario (Multiusuario / Multi-Tenant)
+    // --------------------------------------------------------------------------
+    // Protege el documento del usuario y todas sus subcolecciones descendientes:
+    // - /users/{userId}/clients/{clientId} (incluye transacciones embebidas)
+    // - /users/{userId}/instruments/{instrumentId}
+    match /users/{userId} {
+      allow read, write: if esPropietario(userId);
+
+      // Subcolección de Clientes del usuario
+      match /clients/{clientId} {
+        allow read, write: if esPropietario(userId);
+
+        // Si en el futuro las transacciones se migran a subcolección física:
+        match /transacciones/{txId} {
+          allow read, write: if esPropietario(userId);
+        }
+      }
+
+      // Subcolección de Instrumentos Financieros del usuario
+      match /instruments/{instrumentId} {
+        allow read, write: if esPropietario(userId);
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // Regla de Denegación por Defecto
+    // --------------------------------------------------------------------------
+    // Cualquier otra ruta o colección no especificada explícitamente se bloquea.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

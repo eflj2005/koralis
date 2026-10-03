@@ -5,18 +5,39 @@ import '../../domain/entities/instrument.dart';
 import '../../domain/repositories/instrument_repository.dart';
 
 /// Implementación concreta del repositorio de instrumentos utilizando Cloud Firestore.
+///
+/// Soporta arquitectura multiusuario aislando los instrumentos financieros bajo la ruta
+/// jerárquica `users/{userId}/instruments`. Si no se especifica un `userId`, se resuelve
+/// dinámicamente a partir de la sesión activa en [AppFirebase].
 class InstrumentRepositoryImpl implements InstrumentRepository {
   /// Servicio de Cloud Firestore provisto por [AppFirebase] o inyectado para pruebas.
   final FirestoreService _firestore;
 
-  InstrumentRepositoryImpl({FirestoreService? firestore})
-      : _firestore = firestore ?? AppFirebase().firestore;
+  /// Identificador explícito del usuario propietario de los instrumentos.
+  final String? _userId;
+
+  InstrumentRepositoryImpl({
+    FirestoreService? firestore,
+    String? userId,
+  })  : _firestore = firestore ?? AppFirebase().firestore,
+        _userId = userId;
+
+  /// Resuelve la ruta de la colección de instrumentos según el usuario activo o inyectado.
+  String get _collectionPath {
+    final uid = _userId ?? AppFirebase().currentUidSafe;
+    if (uid != null && uid.trim().isNotEmpty) {
+      return FirebaseFirestoreConfig.coleccionInstrumentos(uid.trim());
+    }
+    return FirebaseFirestoreConfig.colInstrumentos;
+  }
 
   @override
   Future<List<Instrument>> getInstruments() async {
     try {
+      final path = _collectionPath;
+
       final docs = await _firestore.getCollection(
-        collectionPath: FirebaseFirestoreConfig.colInstrumentos,
+        collectionPath: path,
       );
 
       return docs.map((data) {
@@ -64,6 +85,7 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
           estado: data['estado'] as String? ?? 'Activo',
           fechaCreacion: fechaCreacion,
           participaciones: participaciones,
+          userId: data['userId'] as String? ?? _userId ?? AppFirebase().currentUidSafe,
         );
       }).toList();
     } catch (_) {
@@ -73,10 +95,13 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
 
   @override
   Future<void> saveInstrument(Instrument instrument) async {
+    final path = _collectionPath;
+    final uidActual = instrument.userId ?? _userId ?? AppFirebase().currentUidSafe;
+
     // Si el instrumento no posee un identificador previo, se genera uno alfanumérico nativo de Firestore
     final docId = instrument.id.trim().isNotEmpty
         ? instrument.id.trim()
-        : _firestore.newDocumentId(FirebaseFirestoreConfig.colInstrumentos);
+        : _firestore.newDocumentId(path);
 
     final Map<String, dynamic> datos = {
       'numero': instrument.numero.trim(),
@@ -93,8 +118,12 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
       'participaciones': instrument.participaciones.map((p) => p.toMap()).toList(),
     };
 
+    if (uidActual != null && uidActual.trim().isNotEmpty) {
+      datos['userId'] = uidActual.trim();
+    }
+
     await _firestore.setDocument(
-      collectionPath: FirebaseFirestoreConfig.colInstrumentos,
+      collectionPath: path,
       data: datos,
       docId: docId,
     );
@@ -103,7 +132,7 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
   @override
   Future<void> deleteInstrument(String id) async {
     await _firestore.deleteDocument(
-      collectionPath: FirebaseFirestoreConfig.colInstrumentos,
+      collectionPath: _collectionPath,
       docId: id,
     );
   }

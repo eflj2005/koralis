@@ -71,7 +71,8 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   void initState() {
     super.initState();
     ClientRepository? repo;
-    ClientRepository obtenerRepositorio() => repo ??= ClientRepositoryImpl();
+    ClientRepository obtenerRepositorio() =>
+        repo ??= ClientRepositoryImpl(userId: widget.user.id);
 
     _saveClientUseCase = widget.saveClientUseCase ?? SaveClientUseCase(obtenerRepositorio());
     _getProfileUseCase = widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
@@ -117,6 +118,7 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
       observacion: _observacionCtrl.text.trim(),
       estado: _estadoSeleccionado,
       fechaCreacion: fechaCreacion,
+      userId: widget.user.id,
     );
 
     try {

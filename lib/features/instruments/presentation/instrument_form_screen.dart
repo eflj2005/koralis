@@ -93,7 +93,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     super.initState();
     InstrumentRepository? repo;
     InstrumentRepository obtenerRepositorio() =>
-        repo ??= InstrumentRepositoryImpl();
+        repo ??= InstrumentRepositoryImpl(userId: widget.user.id);
 
     _saveInstrumentUseCase =
         widget.saveInstrumentUseCase ??
@@ -162,7 +162,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
   Future<List<Transaction>> _cargarTransaccionesAsociadas() async {
     try {
       final useCase = widget.getTransactionsUseCase ??
-          GetTransactionsUseCase(TransactionRepositoryImpl());
+          GetTransactionsUseCase(TransactionRepositoryImpl(userId: widget.user.id));
       return await useCase.execute();
     } catch (_) {
       // En pruebas unitarias donde Firebase no esté inicializado o no haya mock,
@@ -175,7 +175,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
   Future<List<Client>> _cargarClientesDisponibles() async {
     try {
       final useCase = widget.getClientsUseCase ??
-          GetClientsUseCase(ClientRepositoryImpl());
+          GetClientsUseCase(ClientRepositoryImpl(userId: widget.user.id));
       return await useCase.execute();
     } catch (_) {
       // En pruebas unitarias donde Firebase no esté inicializado o no haya mock,
@@ -187,14 +187,14 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
   /// Guarda o actualiza una transacción de inversión asociada al cliente y a este instrumento.
   Future<void> _ejecutarGuardarAporte(Transaction tx) async {
     final useCase = widget.saveTransactionUseCase ??
-        SaveTransactionUseCase(TransactionRepositoryImpl());
+        SaveTransactionUseCase(TransactionRepositoryImpl(userId: widget.user.id));
     await useCase.execute(tx);
   }
 
   /// Elimina una transacción de inversión asociada a este instrumento y reintegra el saldo al cliente.
   Future<void> _ejecutarEliminarAporte(Transaction tx) async {
     final useCase = widget.deleteTransactionUseCase ??
-        DeleteTransactionUseCase(TransactionRepositoryImpl());
+        DeleteTransactionUseCase(TransactionRepositoryImpl(userId: widget.user.id));
     await useCase.execute(tx.id, clienteId: tx.clienteId);
   }
 
@@ -416,6 +416,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
       estado: _estado,
       fechaCreacion: fechaCreacion,
       participaciones: widget.instrument?.participaciones ?? const [],
+      userId: widget.user.id,
     );
 
     try {

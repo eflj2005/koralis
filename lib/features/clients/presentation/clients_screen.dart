@@ -51,7 +51,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
   void initState() {
     super.initState();
     ClientRepository? repositorio;
-    ClientRepository obtenerRepositorio() => repositorio ??= ClientRepositoryImpl();
+    ClientRepository obtenerRepositorio() =>
+        repositorio ??= ClientRepositoryImpl(userId: widget.user.id);
 
     _getClientsUseCase =
         widget.getClientsUseCase ?? GetClientsUseCase(obtenerRepositorio());

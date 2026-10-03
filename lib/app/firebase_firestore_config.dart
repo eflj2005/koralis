@@ -21,17 +21,43 @@ class FirebaseFirestoreConfig {
   /// Colección raíz de perfiles de usuario.
   static const String colPerfiles = 'profiles';
 
-  /// Colección raíz de clientes de la aplicación Koralis.
+  /// Colección raíz de clientes de la aplicación Koralis (referencia global/legacy).
   static const String colClientes = 'clients';
 
-  /// Colección raíz de instrumentos financieros de la aplicación Koralis.
+  /// Colección raíz de instrumentos financieros de la aplicación Koralis (referencia global/legacy).
   static const String colInstrumentos = 'instruments';
+
+  /// Nombre del segmento de subcolección para clientes pertenecientes a un usuario.
+  static const String subcolClientes = 'clients';
+
+  /// Nombre del segmento de subcolección para instrumentos pertenecientes a un usuario.
+  static const String subcolInstrumentos = 'instruments';
+
+  /// Colección raíz de bancos y entidades financieras (Global para todos los usuarios).
+  static const String colBancos = 'banks';
 
   /// Clave del subobjeto/lista donde se almacenan las transacciones dentro del documento de cada cliente.
   static const String campoTransacciones = 'transacciones';
 
-  /// Colección raíz de bancos y entidades financieras.
-  static const String colBancos = 'banks';
+  /// Retorna la ruta canónica y aislada de la colección de clientes para un usuario específico.
+  /// Formato: 'users/{userId}/clients'
+  static String coleccionClientes(String userId) {
+    final uidLimpio = userId.trim();
+    if (uidLimpio.isEmpty) {
+      return colClientes;
+    }
+    return '$colUsuarios/$uidLimpio/$subcolClientes';
+  }
+
+  /// Retorna la ruta canónica y aislada de la colección de instrumentos para un usuario específico.
+  /// Formato: 'users/{userId}/instruments'
+  static String coleccionInstrumentos(String userId) {
+    final uidLimpio = userId.trim();
+    if (uidLimpio.isEmpty) {
+      return colInstrumentos;
+    }
+    return '$colUsuarios/$uidLimpio/$subcolInstrumentos';
+  }
 
   // ---------------------------------------------------------------------------
   // Campos Comunes

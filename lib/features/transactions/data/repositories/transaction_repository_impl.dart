@@ -5,23 +5,42 @@ import '../../domain/entities/transaction.dart';
 import '../../domain/repositories/transaction_repository.dart';
 
 /// Implementación concreta del repositorio de transacciones embebidas
-/// en el registro de cada cliente (`clients/{clienteId}`).
+/// en el registro de cada cliente (`users/{userId}/clients/{clienteId}`).
+///
+/// Garantiza aislamiento total por usuario al operar sobre los clientes
+/// correspondientes al usuario activo o inyectado.
 class TransactionRepositoryImpl implements TransactionRepository {
   /// Servicio de Cloud Firestore provisto por [AppFirebase] o inyectado para pruebas.
   final FirestoreService _firestore;
 
-  TransactionRepositoryImpl({FirestoreService? firestore})
-      : _firestore = firestore ?? AppFirebase().firestore;
+  /// Identificador explícito del usuario propietario.
+  final String? _userId;
+
+  TransactionRepositoryImpl({
+    FirestoreService? firestore,
+    String? userId,
+  })  : _firestore = firestore ?? AppFirebase().firestore,
+        _userId = userId;
+
+  /// Resuelve la ruta de la colección de clientes según el usuario activo o inyectado.
+  String get _collectionPath {
+    final uid = _userId ?? AppFirebase().currentUidSafe;
+    if (uid != null && uid.trim().isNotEmpty) {
+      return FirebaseFirestoreConfig.coleccionClientes(uid.trim());
+    }
+    return FirebaseFirestoreConfig.colClientes;
+  }
 
   @override
   Future<List<Transaction>> getTransactions({String? clienteId}) async {
     try {
       final List<Transaction> resultado = [];
+      final path = _collectionPath;
 
       if (clienteId != null && clienteId.trim().isNotEmpty) {
-        // Consultar el documento específico del cliente
+        // Consultar el documento específico del cliente del usuario
         final clientDoc = await _firestore.getDocument(
-          collectionPath: FirebaseFirestoreConfig.colClientes,
+          collectionPath: path,
           docId: clienteId.trim(),
         );
 
@@ -45,9 +64,9 @@ class TransactionRepositoryImpl implements TransactionRepository {
           }
         }
       } else {
-        // Consultar todos los clientes y unificar sus transacciones
+        // Consultar todos los clientes del usuario y unificar sus transacciones
         final clientDocs = await _firestore.getCollection(
-          collectionPath: FirebaseFirestoreConfig.colClientes,
+          collectionPath: path,
         );
 
         for (final clientDoc in clientDocs) {
@@ -88,13 +107,15 @@ class TransactionRepositoryImpl implements TransactionRepository {
       throw ArgumentError('clienteId no puede estar vacío');
     }
 
+    final path = _collectionPath;
+
     final clientDoc = await _firestore.getDocument(
-      collectionPath: FirebaseFirestoreConfig.colClientes,
+      collectionPath: path,
       docId: cId,
     );
 
     if (clientDoc == null) {
-      throw StateError('El cliente con ID $cId no existe en Firestore');
+      throw StateError('El cliente con ID $cId no existe en Firestore para este usuario');
     }
 
     final rawList = List<Map<String, dynamic>>.from(
@@ -131,7 +152,7 @@ class TransactionRepositoryImpl implements TransactionRepository {
     }
 
     await _firestore.setDocument(
-      collectionPath: FirebaseFirestoreConfig.colClientes,
+      collectionPath: path,
       docId: cId,
       data: {
         FirebaseFirestoreConfig.campoTransacciones: rawList,
@@ -142,14 +163,16 @@ class TransactionRepositoryImpl implements TransactionRepository {
 
   @override
   Future<void> deleteTransaction(String id, {String? clienteId}) async {
+    final path = _collectionPath;
+
     if (clienteId != null && clienteId.trim().isNotEmpty) {
-      await _eliminarDeCliente(clienteId.trim(), id);
+      await _eliminarDeCliente(clienteId.trim(), id, path);
       return;
     }
 
-    // Si no se proporcionó clienteId, buscar en todos los clientes
+    // Si no se proporcionó clienteId, buscar en todos los clientes del usuario
     final clientDocs = await _firestore.getCollection(
-      collectionPath: FirebaseFirestoreConfig.colClientes,
+      collectionPath: path,
     );
 
     for (final doc in clientDocs) {
@@ -159,7 +182,7 @@ class TransactionRepositoryImpl implements TransactionRepository {
         if (existe) {
           final cId = doc['id'] as String? ?? '';
           if (cId.isNotEmpty) {
-            await _eliminarDeCliente(cId, id);
+            await _eliminarDeCliente(cId, id, path);
             break;
           }
         }
@@ -167,9 +190,9 @@ class TransactionRepositoryImpl implements TransactionRepository {
     }
   }
 
-  Future<void> _eliminarDeCliente(String cId, String txId) async {
+  Future<void> _eliminarDeCliente(String cId, String txId, String path) async {
     final clientDoc = await _firestore.getDocument(
-      collectionPath: FirebaseFirestoreConfig.colClientes,
+      collectionPath: path,
       docId: cId,
     );
     if (clientDoc == null) return;
@@ -184,7 +207,7 @@ class TransactionRepositoryImpl implements TransactionRepository {
     rawList.removeWhere((m) => (m['id'] as String? ?? '') == txId);
 
     await _firestore.setDocument(
-      collectionPath: FirebaseFirestoreConfig.colClientes,
+      collectionPath: path,
       docId: cId,
       data: {
         FirebaseFirestoreConfig.campoTransacciones: rawList,

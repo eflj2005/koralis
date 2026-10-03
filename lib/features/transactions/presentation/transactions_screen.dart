@@ -59,14 +59,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
     TransactionRepository? repo;
     TransactionRepository obtenerRepositorio() =>
-        repo ??= TransactionRepositoryImpl();
+        repo ??= TransactionRepositoryImpl(userId: widget.user.id);
 
     _getTransactionsUseCase = widget.getTransactionsUseCase ??
         GetTransactionsUseCase(obtenerRepositorio());
     _getProfileUseCase =
         widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
     _getClientsUseCase = widget.getClientsUseCase ??
-        GetClientsUseCase(ClientRepositoryImpl());
+        GetClientsUseCase(ClientRepositoryImpl(userId: widget.user.id));
 
     _cargarDatos();
   }

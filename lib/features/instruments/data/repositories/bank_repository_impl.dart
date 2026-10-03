@@ -4,7 +4,9 @@ import 'package:koralis_app/app/firebase_firestore_config.dart';
 import '../../domain/entities/bank.dart';
 import '../../domain/repositories/bank_repository.dart';
 
-/// Implementación del repositorio de bancos que consulta la colección 'banks' en Cloud Firestore.
+/// Implementación del repositorio de bancos que consulta la colección global 'banks' en Cloud Firestore.
+///
+/// Los bancos representan un catálogo maestro compartido de forma global por todos los usuarios del sistema.
 class BankRepositoryImpl implements BankRepository {
   final FirestoreService _firestore;
 

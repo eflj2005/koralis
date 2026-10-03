@@ -92,12 +92,13 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     _observacionCtrl = TextEditingController(text: tx?.observacion ?? '');
 
     TransactionRepository? txRepo;
-    TransactionRepository obtenerTxRepo() => txRepo ??= TransactionRepositoryImpl();
+    TransactionRepository obtenerTxRepo() =>
+        txRepo ??= TransactionRepositoryImpl(userId: widget.user.id);
 
     _saveTransactionUseCase = widget.saveTransactionUseCase ??
         SaveTransactionUseCase(obtenerTxRepo());
     _getClientsUseCase = widget.getClientsUseCase ??
-        GetClientsUseCase(ClientRepositoryImpl());
+        GetClientsUseCase(ClientRepositoryImpl(userId: widget.user.id));
     _getProfileUseCase =
         widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
 

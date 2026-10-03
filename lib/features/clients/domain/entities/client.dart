@@ -32,6 +32,9 @@ class Client {
   /// Historial de transacciones financieras registradas como subobjeto del cliente.
   final List<Transaction> transacciones;
 
+  /// Identificador del usuario propietario al que pertenece este cliente en la arquitectura multiusuario.
+  final String? userId;
+
   Client({
     required this.id,
     required this.nombre,
@@ -42,6 +45,7 @@ class Client {
     this.estado = 'Activo',
     this.transacciones = const [],
     DateTime? fechaCreacion,
+    this.userId,
   }) : fechaCreacion = fechaCreacion ?? DateTime.now();
 
   /// Saldo monetario disponible del cliente calculado sumando ingresos y restando egresos.
@@ -59,6 +63,7 @@ class Client {
     String? estado,
     List<Transaction>? transacciones,
     DateTime? fechaCreacion,
+    String? userId,
   }) {
     return Client(
       id: id ?? this.id,
@@ -70,6 +75,7 @@ class Client {
       estado: estado ?? this.estado,
       transacciones: transacciones ?? this.transacciones,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
+      userId: userId ?? this.userId,
     );
   }
 }

@@ -7,21 +7,39 @@ import '../../domain/repositories/client_repository.dart';
 
 /// Implementación concreta del repositorio de clientes utilizando Cloud Firestore.
 ///
-/// La colección `'clients'` se crea dinámicamente en Firestore al registrar
-/// el primer cliente. Si la colección aún no contiene registros, retorna una lista vacía.
+/// Soporta arquitectura multiusuario aislando los clientes bajo la ruta jerárquica
+/// `users/{userId}/clients`. Si no se especifica un `userId`, se resuelve dinámicamente
+/// a partir de la sesión activa en [AppFirebase].
 class ClientRepositoryImpl implements ClientRepository {
   /// Servicio de Cloud Firestore provisto por [AppFirebase] o inyectado para pruebas.
   final FirestoreService _firestore;
 
-  ClientRepositoryImpl({FirestoreService? firestore})
-      : _firestore = firestore ?? AppFirebase().firestore;
+  /// Identificador explícito del usuario propietario de los clientes.
+  final String? _userId;
+
+  ClientRepositoryImpl({
+    FirestoreService? firestore,
+    String? userId,
+  })  : _firestore = firestore ?? AppFirebase().firestore,
+        _userId = userId;
+
+  /// Resuelve la ruta de la colección de clientes según el usuario activo o inyectado.
+  String get _collectionPath {
+    final uid = _userId ?? AppFirebase().currentUidSafe;
+    if (uid != null && uid.trim().isNotEmpty) {
+      return FirebaseFirestoreConfig.coleccionClientes(uid.trim());
+    }
+    return FirebaseFirestoreConfig.colClientes;
+  }
 
   @override
   Future<List<Client>> getClients() async {
     try {
-      // Consultar todos los documentos de la colección 'clients'
+      final path = _collectionPath;
+
+      // Consultar todos los documentos de la colección de clientes del usuario
       final docs = await _firestore.getCollection(
-        collectionPath: FirebaseFirestoreConfig.colClientes,
+        collectionPath: path,
       );
 
       // Mapear cada documento a la entidad de dominio [Client]
@@ -57,6 +75,7 @@ class ClientRepositoryImpl implements ClientRepository {
           estado: data['estado'] as String? ?? 'Activo',
           transacciones: txs,
           fechaCreacion: fecha,
+          userId: data['userId'] as String? ?? _userId ?? AppFirebase().currentUidSafe,
         );
       }).toList();
     } catch (_) {
@@ -67,10 +86,13 @@ class ClientRepositoryImpl implements ClientRepository {
 
   @override
   Future<void> addClient(Client client) async {
+    final path = _collectionPath;
+    final uidActual = client.userId ?? _userId ?? AppFirebase().currentUidSafe;
+
     // Si el cliente no posee un identificador previo, se genera uno alfanumérico nativo de Firestore
     final docId = client.id.trim().isNotEmpty
         ? client.id.trim()
-        : _firestore.newDocumentId(FirebaseFirestoreConfig.colClientes);
+        : _firestore.newDocumentId(path);
 
     final Map<String, dynamic> datos = {
       'nombre': client.nombre.trim(),
@@ -82,14 +104,18 @@ class ClientRepositoryImpl implements ClientRepository {
       'fechaCreacion': client.fechaCreacion.millisecondsSinceEpoch,
     };
 
+    if (uidActual != null && uidActual.trim().isNotEmpty) {
+      datos['userId'] = uidActual.trim();
+    }
+
     if (client.transacciones.isNotEmpty) {
       datos[FirebaseFirestoreConfig.campoTransacciones] =
           client.transacciones.map((t) => t.toMap()).toList();
     }
 
-    // Al guardar el documento se crea la colección 'clients' si no existía previamente
+    // Persistir en la ruta aislada del usuario
     await _firestore.setDocument(
-      collectionPath: FirebaseFirestoreConfig.colClientes,
+      collectionPath: path,
       data: datos,
       docId: docId,
     );

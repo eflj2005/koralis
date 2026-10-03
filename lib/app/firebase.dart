@@ -40,6 +40,20 @@ class AppFirebase {
   FirebaseStorageService get storage =>
       _storage ??= FirebaseStorageConfig.buildService();
 
+  /// Retorna si Firebase ha sido inicializado explícitamente en la aplicación.
+  bool get isInitialized => _isInitialized;
+
+  /// Retorna el UID del usuario actual de manera segura y resiliente sin lanzar excepción
+  /// cuando Firebase no ha sido inicializado (como en pruebas unitarias puras).
+  String? get currentUidSafe {
+    if (!_isInitialized && _auth == null) return null;
+    try {
+      return auth.currentUid;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Inicializa la app de Firebase con las opciones del proyecto Koralis.
   /// Cada servicio es construido desde su archivo de configuración individual.
   static Future<AppFirebase> initialize() async {

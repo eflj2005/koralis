@@ -45,7 +45,7 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
     super.initState();
     InstrumentRepository? repo;
     InstrumentRepository obtenerRepositorio() =>
-        repo ??= InstrumentRepositoryImpl();
+        repo ??= InstrumentRepositoryImpl(userId: widget.user.id);
 
     _getInstrumentsUseCase =
         widget.getInstrumentsUseCase ??

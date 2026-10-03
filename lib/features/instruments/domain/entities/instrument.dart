@@ -73,6 +73,9 @@ class Instrument {
   /// Lista de clientes partícipes y su proporción asignada (preparado para fase multi-cliente).
   final List<InstrumentClientShare> participaciones;
 
+  /// Identificador del usuario propietario al que pertenece este instrumento en la arquitectura multiusuario.
+  final String? userId;
+
   Instrument({
     required this.id,
     required this.numero,
@@ -87,6 +90,7 @@ class Instrument {
     this.estado = 'Borrador',
     DateTime? fechaCreacion,
     this.participaciones = const [],
+    this.userId,
   }) : fechaCreacion = fechaCreacion ?? DateTime.now();
 
   // ---------------------------------------------------------------------------
@@ -125,6 +129,7 @@ class Instrument {
     String? estado,
     DateTime? fechaCreacion,
     List<InstrumentClientShare>? participaciones,
+    String? userId,
   }) {
     return Instrument(
       id: id ?? this.id,
@@ -140,6 +145,7 @@ class Instrument {
       estado: estado ?? this.estado,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
       participaciones: participaciones ?? this.participaciones,
+      userId: userId ?? this.userId,
     );
   }
 }

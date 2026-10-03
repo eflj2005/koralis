@@ -1,1 +1,24 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"koralis-33347","appId":"1:371881347741:android:890a6acfad05753795e274","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"koralis-33347","configurations":{"android":"1:371881347741:android:890a6acfad05753795e274"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "koralis-33347",
+          "appId": "1:371881347741:android:890a6acfad05753795e274",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "koralis-33347",
+          "configurations": {
+            "android": "1:371881347741:android:890a6acfad05753795e274"
+          }
+        }
+      }
+    }
+  }
+}
