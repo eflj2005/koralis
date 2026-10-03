@@ -566,7 +566,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                   Expanded(
                                     child: DropdownButtonFormField<String?>(
                                       isExpanded: true,
-                                      initialValue: _filtroClienteId,
+                                      // Enlace reactivo a initialValue con validación defensiva de existencia en la lista
+                                      initialValue: (_filtroClienteId == null ||
+                                              _clientesDisponibles.any((c) => c.id == _filtroClienteId))
+                                          ? _filtroClienteId
+                                          : null,
                                       decoration: InputDecoration(
                                         labelText: 'Cliente',
                                         isDense: true,
@@ -616,6 +620,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                   Expanded(
                                     child: DropdownButtonFormField<TransactionType?>(
                                       isExpanded: true,
+                                      // Enlace reactivo directo a initialValue
                                       initialValue: _filtroTipo,
                                       decoration: InputDecoration(
                                         labelText: 'Tipo',

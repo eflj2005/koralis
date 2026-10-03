@@ -486,7 +486,10 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                   else
                                     DropdownButtonFormField<String>(
                                       isExpanded: true,
-                                      initialValue: _clienteIdSeleccionado,
+                                      // Se enlaza reactivamente a 'initialValue' garantizando que el ID seleccionado exista en la lista disponible
+                                      initialValue: _clientesDisponibles.any((c) => c.id == _clienteIdSeleccionado)
+                                          ? _clienteIdSeleccionado
+                                          : null,
                                       decoration: InputDecoration(
                                         labelText: 'Cliente *',
                                         prefixIcon: const Icon(
@@ -514,9 +517,12 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                           : (val) {
                                               setState(() {
                                                 _clienteIdSeleccionado = val;
-                                                final sel = _clientesDisponibles
-                                                    .firstWhere((c) => c.id == val);
-                                                _clienteNombreSeleccionado = sel.nombre;
+                                                // Búsqueda defensiva para evitar excepciones no controladas durante la interacción
+                                                final sel = _clientesDisponibles.cast<Client?>().firstWhere(
+                                                      (c) => c?.id == val,
+                                                      orElse: () => null,
+                                                    );
+                                                _clienteNombreSeleccionado = sel?.nombre;
                                               });
                                             },
                                       validator: (val) {
