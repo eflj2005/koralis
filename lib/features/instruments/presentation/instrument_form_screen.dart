@@ -1303,6 +1303,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
 
     List<Client> clientesDisponibles = [];
     bool cargandoClientes = true;
+    bool consultaIniciada = false;
     Client? clienteSeleccionado;
     bool guardandoAporte = false;
     String? errorCarga;
@@ -1311,7 +1312,10 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
       context,
       child: StatefulBuilder(
         builder: (modalContext, setModalState) {
-          if (cargandoClientes && errorCarga == null) {
+          // Se condiciona la consulta a 'consultaIniciada' para evitar disparos asíncronos concurrentes
+          // en cada frame de renderizado del modal, previniendo sobrecarga del hilo principal y ANR.
+          if (!consultaIniciada && cargandoClientes && errorCarga == null) {
+            consultaIniciada = true;
             Future.wait([
               _cargarClientesDisponibles(),
               aportesExistentes != null
@@ -1532,7 +1536,9 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                           label: 'Cliente Inversor *',
                           hint: 'Selecciona el cliente...',
                           icono: Icons.person_search_rounded,
-                          value: clienteSeleccionado?.id,
+                          value: clientesDisponibles.any((c) => c.id == clienteSeleccionado?.id)
+                              ? clienteSeleccionado?.id
+                              : null,
                           items: clientesDisponibles.map((c) {
                             final docInfo = c.documento.isNotEmpty
                                 ? ' - ${c.documento}'
@@ -1547,8 +1553,11 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                           }).toList(),
                           onChanged: (id) {
                             setModalState(() {
-                              clienteSeleccionado = clientesDisponibles
-                                  .firstWhere((c) => c.id == id);
+                              // Búsqueda defensiva para evitar StateError al seleccionar un cliente
+                              clienteSeleccionado = clientesDisponibles.cast<Client?>().firstWhere(
+                                    (c) => c?.id == id,
+                                    orElse: () => null,
+                                  );
                             });
                           },
                           validator: (val) {
