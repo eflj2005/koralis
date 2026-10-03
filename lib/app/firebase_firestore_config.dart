@@ -15,9 +15,6 @@ class FirebaseFirestoreConfig {
   /// Colección raíz de usuarios de la aplicación.
   static const String colUsuarios = 'users';
 
-  /// Colección raíz de mascotas registradas.
-  static const String colMascotas = 'pets';
-
   /// Colección raíz de perfiles de usuario.
   static const String colPerfiles = 'profiles';
 

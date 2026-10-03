@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:koralis_app/features/auth/presentation/login_screen.dart';
 import 'package:koralis_app/features/auth/presentation/sign_up_screen.dart';
 import 'package:koralis_app/features/dashboard/presentation/dashboard_screen.dart';
-import 'package:koralis_app/features/pets/presentation/pets_screen.dart';
 import 'package:koralis_app/features/profile/presentation/profile_screen.dart';
 import 'package:koralis_app/features/clients/presentation/clients_screen.dart';
 import 'package:koralis_app/features/clients/presentation/client_form_screen.dart';
@@ -87,9 +86,6 @@ class AppRouter {
           );
         }
         return MaterialPageRoute(builder: (_) => const LoginScreen());
-      case '/pets':
-        // ignore: deprecated_member_use_from_same_package
-        return MaterialPageRoute(builder: (_) => const PetsScreen());
       case '/profile':
         final profile = settings.arguments as Profile;
         return MaterialPageRoute(

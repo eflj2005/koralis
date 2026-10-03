@@ -1,88 +1,107 @@
 # 🚀 Koralis App
 
-Aplicación móvil desarrollada en **Flutter** para la gestión de instrumentos financieros. Permite autenticación de usuarios, gestión de perfiles e integración con servicios en la nube (Firebase Auth, Firestore, Firebase Storage), todo respaldado por una arquitectura limpia (**Clean Architecture**) y un paquete central `core` reutilizable.
+Aplicación móvil desarrollada en **Flutter** para la gestión y análisis integral de inversiones, instrumentos financieros (CDTs, pagarés, bonos) y administración de cartera de clientes bajo una **arquitectura multiusuario con aislamiento estricto (Multi-Tenancy)** en Cloud Firestore.
+
+El proyecto está construido bajo los principios de **Clean Architecture**, soportado por un paquete interno desacoplado y agnóstico denominado [packages/core](file:///d:/Projects/Flutter/koralis/packages/core).
 
 ---
 
 ## 📋 Tabla de Contenidos
 
-- [Descripción](#-descripción)
-- [Características](#-características)
+- [Características Principales](#-características-principales)
+- [Centro de Documentación Técnica](#-centro-de-documentación-técnica)
 - [Tecnologías y Dependencias](#-tecnologías-y-dependencias)
 - [Requisitos Previos](#-requisitos-previos)
-- [Instalación](#-instalación)
+- [Instalación y Configuración](#-instalación-y-configuración)
 - [Ejecución](#-ejecución)
-- [Arquitectura](#-arquitectura)
-- [Estructura del Proyecto](#-estructura-del-proyecto)
+- [Rutas de Navegación](#-rutas-de-navegación)
 - [Credenciales de Prueba](#-credenciales-de-prueba)
-- [Contribuir](#-contribuir)
+- [Pruebas y Análisis de Calidad](#-pruebas-y-análisis-de-calidad)
 - [Licencia](#-licencia)
 
 ---
 
-## 📖 Descripción
+## ✨ Características Principales
 
-Koralis App combina una arquitectura limpia (**Clean Architecture**) con un sistema de temas y componentes desacoplado. El paquete interno `core` actúa como una librería agnóstica reutilizable en cualquier otro proyecto Flutter, mientras que la lógica propia de Koralis reside exclusivamente en las capas de negocio y la carpeta `lib/app`.
+- **🔐 Autenticación y Perfil:** Acceso seguro con correo y contraseña vía Firebase Auth, recuperación de clave con validación estricta y sesión persistente.
+- **📊 Dashboard Inmersivo:** Pantalla principal a toda vista sin barra superior convencional, con barra lateral de 58 px, insignia de perfil flotante y menú de navegación con solapas de carpetas físicas verticales giradas 90°.
+- **👥 Cartera de Clientes:** Listado ordenado alfabéticamente (A-Z) en bloques `AppListCard`, historial transaccional embebido y cálculo automático del saldo disponible.
+- **📈 Instrumentos Financieros:** Captura y monitoreo de inversiones en formulario reactivo de 3 pestañas (*Datos*, *Aportes*, *Resultados*), cálculo automático de vencimientos, retención en la fuente y rendimientos netos. Incluye **bloqueo estricto de aportes en estado Activo**.
+- **💸 Transacciones Financieras:** Registro clasificado de movimientos (*Recarga*, *Inversión*, *Retorno*, *Retiro*), filtros combinados por cliente y tipo, validación contra sobregiros y soporte de comprobantes multimedia.
+- **🛡 Aislamiento Multiusuario (Multi-Tenancy):** Partición canónica de datos por usuario (`users/{userId}/...`) en Firestore, blindada mediante políticas de seguridad en `firestore.rules`.
+- **🎨 Sistema de Diseño Desacoplado:** Inyección de paleta corporativa `KoralisColors`, fuentes Manrope y Hanken Grotesk (`google_fonts`) y loaders personalizables vía `CoreThemeExtension`.
 
-## ✅ Características
+---
 
-- **Autenticación** de usuario (login con correo y contraseña vía Firebase Auth).
-- **Dashboard** principal para resumen financiero y accesos rápidos.
-- **Perfil de usuario** con avatar, datos personales y opción de cierre de sesión.
-- **Cierre de sesión** con borrado completo del historial de navegación.
-- **Modal "En Construcción"** reutilizable para funcionalidades pendientes.
-- **Spinner de carga** personalizable desde la configuración de estilos de la app.
-- **Texto en arco** en la pantalla de login para la marca Koralis.
-- **Soporte de temas** totalmente parametrizable mediante inyección de colores y tipografía (`KoralisColors` y `KoralisTypography`).
+## 📚 Centro de Documentación Técnica
+
+Toda la documentación técnica, arquitectónica y funcional se encuentra detallada en la carpeta [docs/](file:///d:/Projects/Flutter/koralis/docs):
+
+```text
+docs/
+├── README.md                    # Índice maestro navegable
+├── core/                        # Paquete interno agnóstico 'core'
+│   ├── sistema_de_diseno.md     # Paleta KoralisColors, tipografía y CoreThemeExtension
+│   ├── catalogo_widgets.md      # Catálogo de 7 tipologías de widgets reutilizables
+│   ├── servicios_firebase.md    # Wrappers de Firestore, FirebaseAuth y Storage
+│   └── utilidades_y_errores.md  # CoreValidators, AppErrorHandler y DatabaseService
+├── features/                    # Módulos funcionales de negocio
+│   ├── auth.md                  # Ciclo de autenticación y sesiones
+│   ├── instruments.md           # Modelos de inversión, fórmulas y reglas de negocio
+│   ├── transactions.md          # Tipología de flujos de caja y saldo disponible
+│   └── clients_and_dashboard.md # Cartera de clientes y dashboard inmersivo
+└── architecture/                # Fundamentos y seguridad
+    ├── aislamiento_multiusuario.md # Estructura multi-tenant en Cloud Firestore
+    ├── seguridad_firestore.md      # Desglose de políticas en firestore.rules
+    └── clean_architecture.md       # Separación de capas e inversión de control
+```
 
 ---
 
 ## 🛠 Tecnologías y Dependencias
 
-| Paquete | Versión | Uso |
+| Paquete | Versión | Propósito |
 |---|---|---|
-| `flutter` | SDK | Framework principal |
-| `firebase_core` | ^4.13.0 | Núcleo de integración con Firebase |
-| `google_fonts` | ^8.1.0 | Tipografías Manrope y Hanken Grotesk |
-| `flutter_arc_text` | ^0.6.0 | Texto curvo en pantalla de Login |
-| `cupertino_icons` | ^1.0.8 | Íconos estilo iOS |
-
-> El paquete interno `packages/core` encapsula widgets reutilizables, validadores, manejo de errores y el sistema de theming.
+| `flutter` | SDK | Framework base para desarrollo móvil multiplataforma. |
+| `firebase_core` | ^4.13.0 | Inicialización del ecosistema Firebase. |
+| `cloud_firestore`| Transversal | Base de datos NoSQL reactiva en tiempo real. |
+| `firebase_auth` | Transversal | Autenticación y gestión de usuarios. |
+| `firebase_storage`| Transversal | Almacenamiento de archivos y comprobantes en la nube. |
+| `google_fonts` | ^8.1.0 | Tipografías corporativas Manrope y Hanken Grotesk. |
+| `flutter_arc_text`| ^0.6.0 | Renderizado tipográfico en curva en la pantalla de bienvenida. |
+| `cupertino_icons` | ^1.0.8 | Iconografía complementaria estilo iOS. |
+| `sqflite` | Transversal | Persistencia y caché local en base de datos relacional. |
 
 ---
 
 ## 📦 Requisitos Previos
 
-Antes de instalar, asegúrate de tener configurado:
-
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) **>= 3.11.1**
 - [Dart SDK](https://dart.dev/get-dart) **>= 3.11.1**
-- Un emulador Android/iOS o dispositivo físico conectado
-- `flutter doctor` sin errores críticos
-
-```bash
-# Verificar instalación de Flutter
-flutter doctor
-```
+- Emulador Android / iOS o dispositivo físico configurado en modo depuración.
+- Verificación del entorno:
+  ```bash
+  flutter doctor
+  ```
 
 ---
 
-## 🚀 Instalación
+## 🚀 Instalación y Configuración
 
-1. **Clona el repositorio**
+1. **Clonar el repositorio:**
    ```bash
-   git clone https://github.com/tu-usuario/koralis_app.git
+   git clone https://github.com/tu-organizacion/koralis_app.git
    cd koralis_app
    ```
 
-2. **Instala las dependencias del paquete `core`**
+2. **Obtener dependencias del paquete Core:**
    ```bash
    cd packages/core
    flutter pub get
    cd ../..
    ```
 
-3. **Instala las dependencias de la aplicación principal**
+3. **Obtener dependencias de la aplicación principal:**
    ```bash
    flutter pub get
    ```
@@ -92,129 +111,66 @@ flutter doctor
 ## ▶️ Ejecución
 
 ```bash
-# Modo desarrollo (con hot-reload)
+# Ejecutar en modo desarrollo
 flutter run
 
-# Ejecutar en un dispositivo específico
+# Ejecutar en un dispositivo o emulador específico
 flutter run -d <device-id>
 
-# Listar dispositivos disponibles
-flutter devices
-
-# Compilar APK de release para Android
+# Compilar release para Android (APK)
 flutter build apk --release
 
-# Compilar para iOS (requiere macOS)
-flutter build ios --release
+# Compilar bundle para Google Play Store
+flutter build appbundle --release
 ```
 
 ---
 
-## 🏗 Arquitectura
+## 🗺 Rutas de Navegación
 
-El proyecto sigue los principios de **Clean Architecture** propuestos por Robert C. Martin, organizados en tres capas bien diferenciadas por responsabilidad:
+Las rutas se gestionan de forma centralizada a través de [AppRouter](file:///d:/Projects/Flutter/koralis/lib/app/router.dart):
 
-### Capas
-
-#### `presentation/`
-Contiene Widgets y Screens de Flutter. Es la capa más externa y solo conoce a la capa de Dominio. Jamás interactúa directamente con los servicios de infraestructura o bases de datos.
-
-#### `domain/`
-Es el corazón del negocio. Contiene:
-- **Entities**: Modelos puros de datos sin dependencias externas (`User`, `Profile`).
-- **Repositories (Interfaces)**: Contratos abstractos que dictan qué operaciones existen, sin importar cómo se implementan.
-- **Use Cases**: Orquestadores de lógica de negocio. Usan las interfaces del repositorio.
-
-#### `data/`
-Es la capa técnica que implementa los contratos definidos en `domain/`. Aquí viven los `RepositoryImpl` que interactúan con Firebase y servicios remotos.
-
-### Regla de Dependencias
-
-```
-Presentación  →  Dominio  ←  Datos
-```
-
-Las capas externas siempre dependen de las internas. El Dominio nunca importa archivos de Presentación ni de Datos, garantizando que la lógica de negocio sea testeable e independiente de cualquier tecnología.
-
-### Paquete `core` (Librería Interna)
-
-Ubicado en `packages/core/`, es una librería agnóstica de negocio que provee:
-
-- `CoreTheme` / `CoreThemeExtension`: Sistema de temas parametrizable por inyección.
-- Widgets reutilizables: `AppButton`, `AppTextField`, `AppSpinner`, `LoadingWidget`, `EmptyWidget`, `AppMenuButton`, `showUnderConstructionDialog`.
-- `CoreValidators`: Validadores de formularios.
-- `CoreColors` / `CoreTypography`: Constantes de fábrica (colores base de Flutter).
-
-La identidad visual de Koralis se inyecta desde `lib/app/styles.dart`, manteniendo el `core` libre de dependencias de marca.
-
----
-
-## 📁 Estructura del Proyecto
-
-```
-koralis_app/
-├── lib/
-│   ├── app/
-│   │   ├── firebase.dart                  # AppFirebase (Inicialización centralizada)
-│   │   ├── firebase_auth_config.dart      # FirebaseAuthService
-│   │   ├── firebase_firestore_config.dart # FirebaseFirestoreService
-│   │   ├── firebase_storage_config.dart   # FirebaseStorageService
-│   │   ├── router.dart                    # AppRouter (rutas nombradas)
-│   │   └── styles.dart                    # AppStyles, KoralisColors, KoralisTypography
-│   ├── features/
-│   │   ├── auth/                          # Módulo de autenticación
-│   │   │   ├── data/
-│   │   │   ├── domain/
-│   │   │   └── presentation/
-│   │   ├── dashboard/                     # Módulo de dashboard
-│   │   └── profile/                       # Módulo de perfil de usuario
-│   ├── firebase_options.dart
-│   └── main.dart
-├── packages/
-│   └── core/                              # Librería interna reutilizable
-│       └── lib/
-│           └── src/
-│               ├── constants.dart
-│               ├── errors/
-│               ├── theme.dart
-│               ├── validators.dart
-│               └── widgets.dart
-├── images/                                # Assets estáticos (GIF, logos, avatares)
-├── pubspec.yaml
-└── README.md
-```
-
-### Rutas de Navegación
-
-| Ruta | Pantalla | Requiere Argumento |
+| Ruta | Pantalla | Argumentos Requeridos |
 |---|---|---|
-| `/` | `LoginScreen` | No |
-| `/dashboard` | `DashboardScreen` | `User` |
-| `/profile` | `ProfileScreen` | `Profile` |
+| `/` | [LoginScreen](file:///d:/Projects/Flutter/koralis/lib/features/auth/presentation/login_screen.dart) | Ninguno |
+| `/sign_up` | [SignUpScreen](file:///d:/Projects/Flutter/koralis/lib/features/auth/presentation/sign_up_screen.dart) | Ninguno |
+| `/dashboard` | [DashboardScreen](file:///d:/Projects/Flutter/koralis/lib/features/dashboard/presentation/dashboard_screen.dart) | `User` |
+| `/clients` | [ClientsScreen](file:///d:/Projects/Flutter/koralis/lib/features/clients/presentation/clients_screen.dart) | `User` |
+| `/client_form` | [ClientFormScreen](file:///d:/Projects/Flutter/koralis/lib/features/clients/presentation/client_form_screen.dart) | `ClientFormArgs` o `User` |
+| `/instruments` | [InstrumentsScreen](file:///d:/Projects/Flutter/koralis/lib/features/instruments/presentation/instruments_screen.dart) | `User` |
+| `/instrument_form`| [InstrumentFormScreen](file:///d:/Projects/Flutter/koralis/lib/features/instruments/presentation/instrument_form_screen.dart) | `InstrumentFormArgs` o `User` |
+| `/transactions` | [TransactionsScreen](file:///d:/Projects/Flutter/koralis/lib/features/transactions/presentation/transactions_screen.dart) | `User` |
+| `/transaction_form`| [TransactionFormScreen](file:///d:/Projects/Flutter/koralis/lib/features/transactions/presentation/transaction_form_screen.dart) | `TransactionFormArgs` o `User` |
+| `/profile` | [ProfileScreen](file:///d:/Projects/Flutter/koralis/lib/features/profile/presentation/profile_screen.dart) | `Profile` |
 
 ---
 
 ## 🔑 Credenciales de Prueba
 
-Para pruebas en entornos de desarrollo con Firebase Auth:
+Para pruebas de acceso en entornos de desarrollo:
 
-| Campo | Valor |
+| Parámetro | Valor |
 |---|---|
 | **Correo** | `admin@koralis.com` |
 | **Contraseña** | `Koralis123*` |
 
 ---
 
-## 🤝 Contribuir
+## 🧪 Pruebas y Análisis de Calidad
 
-1. Haz un fork del repositorio.
-2. Crea una rama para tu feature: `git checkout -b feature/nueva-funcionalidad`.
-3. Realiza tus cambios respetando la arquitectura existente.
-4. Ejecuta el analizador antes de hacer commit: `dart analyze`.
-5. Envía un Pull Request describiendo los cambios.
+```bash
+# Ejecutar análisis estático (Linter)
+flutter analyze
+
+# Ejecutar suite completa de pruebas unitarias y de widgets
+flutter test
+
+# Ejecutar específicamente pruebas de aislamiento multiusuario
+flutter test test/features/multi_user_isolation_test.dart
+```
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto es de uso privado. Todos los derechos reservados.
+Este proyecto es propiedad privada de **Koralis**. Todos los derechos reservados.

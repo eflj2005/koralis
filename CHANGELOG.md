@@ -7,6 +7,28 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ---
 
+## [2.1.0] — 2026-10-02
+
+### Added
+- **Centro de Documentación Técnica en `docs/`:**
+  - Documentación del Paquete Core: [sistema_de_diseno.md](file:///d:/Projects/Flutter/koralis/docs/core/sistema_de_diseno.md), [catalogo_widgets.md](file:///d:/Projects/Flutter/koralis/docs/core/catalogo_widgets.md), [servicios_firebase.md](file:///d:/Projects/Flutter/koralis/docs/core/servicios_firebase.md) y [utilidades_y_errores.md](file:///d:/Projects/Flutter/koralis/docs/core/utilidades_y_errores.md).
+  - Documentación de Módulos de Negocio: [auth.md](file:///d:/Projects/Flutter/koralis/docs/features/auth.md), [instruments.md](file:///d:/Projects/Flutter/koralis/docs/features/instruments.md), [transactions.md](file:///d:/Projects/Flutter/koralis/docs/features/transactions.md) y [clients_and_dashboard.md](file:///d:/Projects/Flutter/koralis/docs/features/clients_and_dashboard.md).
+  - Documentación de Arquitectura y Seguridad: [aislamiento_multiusuario.md](file:///d:/Projects/Flutter/koralis/docs/architecture/aislamiento_multiusuario.md), [seguridad_firestore.md](file:///d:/Projects/Flutter/koralis/docs/architecture/seguridad_firestore.md) y [clean_architecture.md](file:///d:/Projects/Flutter/koralis/docs/architecture/clean_architecture.md).
+  - Índice maestro navegable en [docs/README.md](file:///d:/Projects/Flutter/koralis/docs/README.md).
+- Comentarios Dartdoc en español para `CoreColors` y `CoreTypography` en [constants.dart](file:///d:/Projects/Flutter/koralis/packages/core/lib/src/constants.dart).
+- Suite de pruebas de aislamiento multi-tenant en [multi_user_isolation_test.dart](file:///d:/Projects/Flutter/koralis/test/features/multi_user_isolation_test.dart).
+
+### Removed
+- **Eliminación definitiva del módulo legado `features/pets/`**: borrado de datasources, repositorios, entidades, casos de uso, pantallas y [README_BORRAR.md](file:///d:/Projects/Flutter/koralis/lib/features/pets/README_BORRAR.md).
+- Eliminación de la suite de pruebas unitarias `test/features/pets/pet_test.dart`.
+- Eliminación de la ruta `'/pets'` en [router.dart](file:///d:/Projects/Flutter/koralis/lib/app/router.dart).
+- Eliminación de la constante de colección `colMascotas` en [firebase_firestore_config.dart](file:///d:/Projects/Flutter/koralis/lib/app/firebase_firestore_config.dart).
+
+### Changed
+- Actualización integral de [README.md](file:///d:/Projects/Flutter/koralis/README.md) en la raíz: catálogo completo de rutas nombradas, características financieras actuales, arquitectura multiusuario y enlace central hacia `docs/`.
+
+---
+
 ## [2.0.2+9] — 2026-07-14
 
 ### Added
