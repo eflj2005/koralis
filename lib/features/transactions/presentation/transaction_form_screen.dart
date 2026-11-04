@@ -163,7 +163,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       initialDate: _fecha,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
-      locale: const Locale('es', 'CO'),
     );
 
     if (seleccionada != null && seleccionada != _fecha) {

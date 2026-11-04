@@ -119,7 +119,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       initialDate: _fechaInicial,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
-      locale: const Locale('es', 'CO'),
     );
 
     if (seleccionada != null) {
@@ -144,7 +143,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       initialDate: _fechaFinal,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
-      locale: const Locale('es', 'CO'),
     );
 
     if (seleccionada != null) {

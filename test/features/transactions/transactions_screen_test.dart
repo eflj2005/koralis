@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/clients/domain/entities/client.dart';
@@ -94,6 +95,24 @@ void main() {
     ),
   ];
 
+  Widget buildTestApp(Widget home) {
+    return MaterialApp(
+      theme: testTheme,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('es', 'CO'),
+        Locale('es', ''),
+        Locale('en', ''),
+      ],
+      locale: const Locale('es', 'CO'),
+      home: home,
+    );
+  }
+
   group('TransactionsScreen - Visualización y filtros combinados', () {
     testWidgets('Debe mostrar estado vacío cuando no existen transacciones', (tester) async {
       tester.view.physicalSize = const Size(420, 844);
@@ -108,9 +127,8 @@ void main() {
       final getClients = GetClientsUseCase(clientRepo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: testTheme,
-          home: TransactionsScreen(
+        buildTestApp(
+          TransactionsScreen(
             user: testUser,
             getTransactionsUseCase: getTransactions,
             getProfileUseCase: getProfile,
@@ -159,9 +177,8 @@ void main() {
       final getClients = GetClientsUseCase(clientRepo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: testTheme,
-          home: TransactionsScreen(
+        buildTestApp(
+          TransactionsScreen(
             user: testUser,
             getTransactionsUseCase: getTransactions,
             getProfileUseCase: getProfile,
@@ -219,9 +236,8 @@ void main() {
       final getClients = GetClientsUseCase(clientRepo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: testTheme,
-          home: TransactionsScreen(
+        buildTestApp(
+          TransactionsScreen(
             user: testUser,
             getTransactionsUseCase: getTransactions,
             getProfileUseCase: getProfile,
@@ -276,9 +292,8 @@ void main() {
       final getClients = GetClientsUseCase(clientRepo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          theme: testTheme,
-          home: TransactionsScreen(
+        buildTestApp(
+          TransactionsScreen(
             user: testUser,
             getTransactionsUseCase: getTransactions,
             getProfileUseCase: getProfile,
@@ -298,6 +313,48 @@ void main() {
       expect(find.text('Valor de la Transacción'), findsOneWidget);
       expect(find.text('Depósito en efectivo'), findsWidgets);
       expect(find.text('Editar Transacción'), findsOneWidget);
+    });
+
+    testWidgets('Tocar el filtro "Desde" debe abrir el DatePickerDialog correctamente sin error de localizaciones', (tester) async {
+      tester.view.physicalSize = const Size(420, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final txRepo = MockTransactionRepo([]);
+      final clientRepo = MockClientRepo(testClients);
+      final getTransactions = GetTransactionsUseCase(txRepo);
+      final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getClients = GetClientsUseCase(clientRepo);
+
+      await tester.pumpWidget(
+        buildTestApp(
+          TransactionsScreen(
+            user: testUser,
+            getTransactionsUseCase: getTransactions,
+            getProfileUseCase: getProfile,
+            getClientsUseCase: getClients,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Tocar el campo "Desde"
+      await tester.tap(find.widgetWithText(InputDecorator, 'Desde'));
+      await tester.pumpAndSettle();
+
+      // Debe abrir el DatePickerDialog sin lanzar excepciones de localización
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+
+      // Cerrar el diálogo tocando Cancelar
+      final botonCancelar = find.text('Cancelar');
+      expect(botonCancelar, findsOneWidget);
+      await tester.tap(botonCancelar);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DatePickerDialog), findsNothing);
     });
   });
 }
