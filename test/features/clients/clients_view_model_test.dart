@@ -139,5 +139,100 @@ void main() {
       expect(vm.clientes.length, equals(1));
       expect(vm.clientes.single.id, equals('c1'));
     });
+
+    test('cargarClientes expone saldoDisponible calculado con ingresos, egresos, negativo y cero', () async {
+      final conMovimientos = Client(
+        id: 'c-pos',
+        nombre: 'Ana Positiva',
+        documento: '2001',
+        correo: 'ana@test.com',
+        telefono: '3001',
+        transacciones: [
+          Transaction(
+            id: 't1',
+            clienteId: 'c-pos',
+            clienteNombre: 'Ana Positiva',
+            tipo: TransactionType.recarga,
+            valor: 1000000,
+            fecha: DateTime(2026, 5, 1),
+          ),
+          Transaction(
+            id: 't2',
+            clienteId: 'c-pos',
+            clienteNombre: 'Ana Positiva',
+            tipo: TransactionType.inversion,
+            valor: 400000,
+            fecha: DateTime(2026, 5, 2),
+          ),
+          Transaction(
+            id: 't3',
+            clienteId: 'c-pos',
+            clienteNombre: 'Ana Positiva',
+            tipo: TransactionType.retorno,
+            valor: 150000,
+            fecha: DateTime(2026, 5, 3),
+          ),
+          Transaction(
+            id: 't4',
+            clienteId: 'c-pos',
+            clienteNombre: 'Ana Positiva',
+            tipo: TransactionType.retiro,
+            valor: 50000,
+            fecha: DateTime(2026, 5, 4),
+          ),
+        ],
+      );
+
+      final conNegativo = Client(
+        id: 'c-neg',
+        nombre: 'Beto Negativo',
+        documento: '2002',
+        correo: 'beto@test.com',
+        telefono: '3002',
+        transacciones: [
+          Transaction(
+            id: 't5',
+            clienteId: 'c-neg',
+            clienteNombre: 'Beto Negativo',
+            tipo: TransactionType.recarga,
+            valor: 100000,
+            fecha: DateTime(2026, 5, 1),
+          ),
+          Transaction(
+            id: 't6',
+            clienteId: 'c-neg',
+            clienteNombre: 'Beto Negativo',
+            tipo: TransactionType.retiro,
+            valor: 150000,
+            fecha: DateTime(2026, 5, 2),
+          ),
+        ],
+      );
+
+      final sinMovimientos = Client(
+        id: 'c-cero',
+        nombre: 'Carlos Cero',
+        documento: '2003',
+        correo: 'carlos@test.com',
+        telefono: '3003',
+      );
+
+      final repo = _FakeClientRepo([conMovimientos, conNegativo, sinMovimientos]);
+      final vm = ClientsViewModel(
+        userId: 'u1',
+        getClientsUseCase: GetClientsUseCase(repo),
+        deleteClientUseCase: DeleteClientUseCase(
+          clientRepository: repo,
+          instrumentRepository: _FakeInstrumentRepo([]),
+          transactionRepository: _FakeTransactionRepo([]),
+        ),
+      );
+
+      await vm.cargarClientes();
+
+      expect(vm.clientes[0].saldoDisponible, 700000.0);
+      expect(vm.clientes[1].saldoDisponible, -50000.0);
+      expect(vm.clientes[2].saldoDisponible, 0.0);
+    });
   });
 }

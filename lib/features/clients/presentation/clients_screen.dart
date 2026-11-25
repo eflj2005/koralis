@@ -89,6 +89,16 @@ class _ClientsView extends StatefulWidget {
 class _ClientsViewState extends State<_ClientsView> {
   static const double _anchoBarraBase = 58.0;
 
+  String _formatearMoneda(double valor) {
+    final esNegativo = valor < 0;
+    final partes = valor.abs().toStringAsFixed(2).split('.');
+    final entero = partes[0].replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]}.',
+    );
+    return '${esNegativo ? '-' : ''}\$ $entero,${partes[1]}';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -525,6 +535,10 @@ class _ClientsViewState extends State<_ClientsView> {
       itemBuilder: (context, index) {
         final cliente = clientes[index];
         final bool esActivo = cliente.estado.toLowerCase() == 'activo';
+        final double disponible = cliente.saldoDisponible;
+        final String disponibleTexto = _formatearMoneda(disponible);
+        final Color colorDisponible =
+            disponible < 0 ? colorScheme.error : colorScheme.primary;
 
         return AppListCard(
           titulo: cliente.nombre,
@@ -548,9 +562,9 @@ class _ClientsViewState extends State<_ClientsView> {
                   ),
                 ),
                 Text(
-                  '\$0',
+                  disponibleTexto,
                   style: theme.textTheme.titleMedium?.copyWith(
-                    color: colorScheme.primary,
+                    color: colorDisponible,
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
                   ),
@@ -646,9 +660,9 @@ class _ClientsViewState extends State<_ClientsView> {
                       leading: const Icon(Icons.account_balance_wallet_outlined),
                       title: const Text('Disponible'),
                       subtitle: Text(
-                        '\$0',
+                        disponibleTexto,
                         style: TextStyle(
-                          color: colorScheme.primary,
+                          color: colorDisponible,
                           fontWeight: FontWeight.bold,
                           fontSize: 15,
                         ),
