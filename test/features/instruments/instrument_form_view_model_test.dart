@@ -203,47 +203,6 @@ void main() {
       expect(vm.aportes.single.transaccionId, isNull);
     });
 
-    test('Carga aportes legacy cuando el instrumento ya está Activo sin campo aportes', () async {
-      final txRepo = _FakeTxRepo([
-        Transaction(
-          id: 'tx-leg-1',
-          clienteId: 'c1',
-          clienteNombre: 'Carlos Santana',
-          tipo: TransactionType.inversion,
-          valor: 5000000,
-          fecha: DateTime(2026, 3, 2),
-          instrumentoId: 'inst-leg',
-        ),
-      ]);
-      final legacy = Instrument(
-        id: 'inst-leg',
-        numero: 'CDT-LEG',
-        entidad: 'Davivienda',
-        fechaApertura: DateTime(2026, 3, 1),
-        dias: 90,
-        tasaIea: 10.0,
-        valorInvertido: 5000000,
-        rendimientoTProyec: 120000,
-        estado: 'Activo',
-      );
-
-      final vm = InstrumentFormViewModel(
-        userId: 'u1',
-        instrumentInicial: legacy,
-        saveInstrumentUseCase: SaveInstrumentUseCase(_FakeInstRepo()),
-        getBanksUseCase: GetBanksUseCase(_FakeBankRepo()),
-        getTransactionsUseCase: GetTransactionsUseCase(txRepo),
-        getClientsUseCase: GetClientsUseCase(_FakeClientRepo([], txRepo)),
-        saveTransactionUseCase: SaveTransactionUseCase(txRepo),
-        deleteTransactionUseCase: DeleteTransactionUseCase(txRepo),
-      );
-
-      await vm.inicializar();
-      expect(vm.cargandoAportesLegacy, isFalse);
-      expect(vm.aportesMostrados.length, equals(1));
-      expect(vm.aportesMostrados.single.clienteNombre, equals('Carlos Santana'));
-    });
-
     test('Propaga InsufficientBalanceException al intentar activar sin saldo', () async {
       final cliente = Client(
         id: 'c1',

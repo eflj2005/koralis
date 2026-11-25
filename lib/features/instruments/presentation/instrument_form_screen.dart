@@ -2054,31 +2054,11 @@ class _InstrumentFormViewState extends State<_InstrumentFormView> {
                 ],
               ),
             )
-          else if (vm.cargandoAportesLegacy)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24.0),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (vm.errorAportesLegacy != null)
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: colorScheme.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'Error al consultar aportes asociados: ${vm.errorAportesLegacy}',
-                style: TextStyle(
-                  color: colorScheme.error,
-                  fontSize: 12,
-                ),
-              ),
-            )
           else
             _buildListaAportesVisual(
               context: context,
               vm: vm,
-              aportes: vm.aportesMostrados,
+              aportes: vm.aportes,
               puedeGestionar: puedeGestionarAportes,
             ),
         ],

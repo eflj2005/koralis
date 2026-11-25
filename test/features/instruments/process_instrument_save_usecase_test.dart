@@ -330,33 +330,6 @@ void main() {
       expect(clientesActualizados.firstWhere((c) => c.id == 'cli-1').saldoDisponible, equals(10000000));
     });
 
-    test('Activo -> Borrador en instrumento legacy (aportes vacío) migra aportes y elimina transacciones', () async {
-      await txRepo.saveTransaction(
-        Transaction(
-          id: 'tx-legacy-1',
-          clienteId: 'cli-1',
-          clienteNombre: 'Carlos Santana',
-          tipo: TransactionType.inversion,
-          valor: 4000000,
-          fecha: DateTime(2026, 3, 20),
-          instrumentoId: 'inst-1',
-        ),
-      );
-      final legacyActivo = crearInstrumentoBase(estado: 'Activo', aportes: const []);
-
-      final reversion = await useCase.execute(
-        instrumentoNuevo: legacyActivo.copyWith(estado: 'Borrador'),
-        instrumentoPrevio: legacyActivo,
-      );
-
-      expect(reversion.transaccionesReversadas, equals(1));
-      expect(txRepo.transacciones.where((t) => t.tipo == TransactionType.inversion), isEmpty);
-      expect(instRepo.items.single.aportes.length, equals(1));
-      expect(instRepo.items.single.aportes.single.clienteId, equals('cli-1'));
-      expect(instRepo.items.single.aportes.single.valor, equals(4000000));
-      expect(instRepo.items.single.aportes.single.transaccionId, isNull);
-    });
-
     test('Rollback defensivo revierte transacciones parciales si falla el guardado de una transacción', () async {
       txRepo.failOnClienteId = 'cli-2';
       final aportes = [

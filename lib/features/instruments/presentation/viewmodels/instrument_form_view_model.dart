@@ -10,7 +10,6 @@ import 'package:koralis_app/features/instruments/domain/usecases/get_banks_useca
 import 'package:koralis_app/features/instruments/domain/usecases/process_instrument_save_usecase.dart';
 import 'package:koralis_app/features/instruments/domain/usecases/save_instrument_usecase.dart';
 import 'package:koralis_app/features/transactions/data/repositories/transaction_repository_impl.dart';
-import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/delete_transaction_usecase.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/get_transactions_usecase.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/save_transaction_usecase.dart';
@@ -29,9 +28,6 @@ class InstrumentFormViewModel extends ChangeNotifier {
 
   Instrument? _instrumentoPersistido;
   late List<InstrumentContribution> _aportes;
-  List<InstrumentContribution> _aportesLegacy = const [];
-  bool _cargandoAportesLegacy = false;
-  String? _errorAportesLegacy;
 
   late String _estado;
   late String _estadoPersistido;
@@ -83,8 +79,6 @@ class InstrumentFormViewModel extends ChangeNotifier {
   bool get guardando => _guardando;
   List<Bank> get bancos => List.unmodifiable(_bancos);
   bool get cargandoBancos => _cargandoBancos;
-  bool get cargandoAportesLegacy => _cargandoAportesLegacy;
-  String? get errorAportesLegacy => _errorAportesLegacy;
 
   bool get puedeGestionarAportes =>
       esEdicion && _estado == 'Borrador' && _estadoPersistido == 'Borrador';
@@ -93,9 +87,6 @@ class InstrumentFormViewModel extends ChangeNotifier {
       esEdicion && _estadoPersistido == 'Activo' && _estado == 'Borrador';
 
   List<InstrumentContribution> get aportes => List.unmodifiable(_aportes);
-  List<InstrumentContribution> get aportesMostrados => _aportes.isNotEmpty
-      ? List.unmodifiable(_aportes)
-      : List.unmodifiable(_aportesLegacy);
 
   DateTime get fechaApertura => _fechaApertura;
   int get dias => _dias;
@@ -142,13 +133,9 @@ class InstrumentFormViewModel extends ChangeNotifier {
     }
   }
 
-  /// Carga bancos y, si aplica, aportes legacy para instrumentos ya activos/cerrados.
+  /// Carga el catálogo de bancos disponibles para el selector del formulario.
   Future<void> inicializar() async {
-    await Future.wait([
-      _cargarBancos(),
-      if (esEdicion && _aportes.isEmpty && _estadoPersistido != 'Borrador')
-        _cargarAportesLegacy(),
-    ]);
+    await _cargarBancos();
   }
 
   Future<void> _cargarBancos() async {
@@ -158,42 +145,6 @@ class InstrumentFormViewModel extends ChangeNotifier {
       // En pruebas unitarias sin Firebase o sin mock, se mantiene lista vacía segura
     } finally {
       _cargandoBancos = false;
-      _notificar();
-    }
-  }
-
-  Future<void> _cargarAportesLegacy() async {
-    _cargandoAportesLegacy = true;
-    _errorAportesLegacy = null;
-    _notificar();
-
-    try {
-      final todas = await _obtenerGetTransactionsUseCase().execute();
-      final instId = instrumentInicial!.id;
-      final instNum = instrumentInicial!.numero;
-
-      _aportesLegacy = todas
-          .where((t) {
-            final esInversion = t.tipo == TransactionType.inversion;
-            final ref = t.instrumentoId ?? '';
-            final coincide =
-                ref.isNotEmpty && (ref == instId || ref == instNum);
-            return esInversion && coincide;
-          })
-          .map(
-            (tx) => InstrumentContribution(
-              clienteId: tx.clienteId,
-              clienteNombre: tx.clienteNombre,
-              valor: tx.valor,
-              fecha: tx.fecha,
-              transaccionId: tx.id,
-            ),
-          )
-          .toList();
-    } catch (e) {
-      _errorAportesLegacy = e.toString();
-    } finally {
-      _cargandoAportesLegacy = false;
       _notificar();
     }
   }

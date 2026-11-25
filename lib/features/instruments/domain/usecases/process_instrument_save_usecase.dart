@@ -271,27 +271,9 @@ class ProcessInstrumentSaveUseCase {
               ref == instrumentoPrevio.numero.trim());
     }).toList();
 
-    final List<InstrumentContribution> aportesPreservados;
-    if (instrumentoNuevo.aportes.isNotEmpty) {
-      aportesPreservados = instrumentoNuevo.aportes
-          .map((a) => a.copyWith(clearTransaccionId: true))
-          .toList();
-    } else if (txsAReversar.isNotEmpty) {
-      // Soporte legacy: si el instrumento activo no tenía el campo aportes, migrarlos al revertir.
-      aportesPreservados = txsAReversar
-          .map(
-            (tx) => InstrumentContribution(
-              clienteId: tx.clienteId,
-              clienteNombre: tx.clienteNombre,
-              valor: tx.valor,
-              fecha: tx.fecha,
-              transaccionId: null,
-            ),
-          )
-          .toList();
-    } else {
-      aportesPreservados = const [];
-    }
+    final aportesPreservados = instrumentoNuevo.aportes
+        .map((a) => a.copyWith(clearTransaccionId: true))
+        .toList();
 
     for (final tx in txsAReversar) {
       await _deleteTransactionUseCase.execute(

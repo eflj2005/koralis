@@ -370,6 +370,22 @@ void main() {
         retencionPorcentaje: 4.0,
         estado: 'Activo',
         observacion: 'Prueba de clientes asociados',
+        aportes: [
+          InstrumentContribution(
+            clienteId: 'cli-001',
+            clienteNombre: 'Carlos Santana',
+            valor: 30000000,
+            fecha: DateTime(2026, 3, 2),
+            transaccionId: 'tx-001',
+          ),
+          InstrumentContribution(
+            clienteId: 'cli-002',
+            clienteNombre: 'Mariana Pajón',
+            valor: 20000000,
+            fecha: DateTime(2026, 3, 5),
+            transaccionId: 'tx-002',
+          ),
+        ],
       );
 
       final transaccionesMock = [
@@ -940,6 +956,15 @@ void main() {
         observacion: 'Instrumento ya activo',
         estado: 'Activo',
         fechaCreacion: DateTime(2026, 3, 1),
+        aportes: [
+          InstrumentContribution(
+            clienteId: 'cli-001',
+            clienteNombre: 'Carlos Santana',
+            valor: 10000000,
+            fecha: DateTime(2026, 3, 2),
+            transaccionId: 'tx-inv-1',
+          ),
+        ],
       );
 
       final repoInst = MockInstrumentRepo();

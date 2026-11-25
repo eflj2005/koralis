@@ -2,7 +2,7 @@ name: koralis_app
 description: "App para gestión de instrumentos financieros."
 publish_to: 'none'
 
-version: 2.7.2
+version: 2.7.3
 
 environment:
   sdk: ^3.11.1
