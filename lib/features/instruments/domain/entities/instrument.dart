@@ -25,6 +25,72 @@ class InstrumentClientShare {
       );
 }
 
+/// Entidad que representa un aporte de capital registrado en un instrumento financiero.
+///
+/// Mientras el instrumento permanece en estado `Borrador`, [transaccionId] es nulo y
+/// el aporte no descuenta saldo disponible del cliente. Al guardar el instrumento como
+/// `Activo`, se genera la transacción de inversión automática y se vincula su [transaccionId].
+class InstrumentContribution {
+  final String clienteId;
+  final String clienteNombre;
+  final double valor;
+  final DateTime fecha;
+  final String? transaccionId;
+
+  InstrumentContribution({
+    required this.clienteId,
+    required this.clienteNombre,
+    required this.valor,
+    DateTime? fecha,
+    this.transaccionId,
+  }) : fecha = fecha ?? DateTime.now();
+
+  Map<String, dynamic> toMap() => {
+        'clienteId': clienteId,
+        'clienteNombre': clienteNombre,
+        'valor': valor,
+        'fecha': fecha.millisecondsSinceEpoch,
+        'transaccionId': transaccionId,
+      };
+
+  factory InstrumentContribution.fromMap(Map<String, dynamic> map) {
+    DateTime parsearFecha(dynamic raw) {
+      if (raw is int) {
+        return DateTime.fromMillisecondsSinceEpoch(raw);
+      } else if (raw is String) {
+        return DateTime.tryParse(raw) ?? DateTime.now();
+      }
+      return DateTime.now();
+    }
+
+    return InstrumentContribution(
+      clienteId: map['clienteId'] as String? ?? '',
+      clienteNombre: map['clienteNombre'] as String? ?? '',
+      valor: (map['valor'] as num?)?.toDouble() ?? 0.0,
+      fecha: parsearFecha(map['fecha']),
+      transaccionId: map['transaccionId'] as String?,
+    );
+  }
+
+  InstrumentContribution copyWith({
+    String? clienteId,
+    String? clienteNombre,
+    double? valor,
+    DateTime? fecha,
+    String? transaccionId,
+    bool clearTransaccionId = false,
+  }) {
+    return InstrumentContribution(
+      clienteId: clienteId ?? this.clienteId,
+      clienteNombre: clienteNombre ?? this.clienteNombre,
+      valor: valor ?? this.valor,
+      fecha: fecha ?? this.fecha,
+      transaccionId:
+          clearTransaccionId ? null : (transaccionId ?? this.transaccionId),
+    );
+  }
+}
+
 /// Entidad de dominio que representa un instrumento financiero en el ecosistema Koralis.
 ///
 /// Encapsula datos de entrada obligatorios y reglas de cálculo automatizadas:
@@ -73,6 +139,9 @@ class Instrument {
   /// Lista de clientes partícipes y su proporción asignada (preparado para fase multi-cliente).
   final List<InstrumentClientShare> participaciones;
 
+  /// Lista de aportes de capital asociados al instrumento (diferidos hasta activación).
+  final List<InstrumentContribution> aportes;
+
   /// Identificador del usuario propietario al que pertenece este instrumento en la arquitectura multiusuario.
   final String? userId;
 
@@ -90,6 +159,7 @@ class Instrument {
     this.estado = 'Borrador',
     DateTime? fechaCreacion,
     this.participaciones = const [],
+    this.aportes = const [],
     this.userId,
   }) : fechaCreacion = fechaCreacion ?? DateTime.now();
 
@@ -129,6 +199,7 @@ class Instrument {
     String? estado,
     DateTime? fechaCreacion,
     List<InstrumentClientShare>? participaciones,
+    List<InstrumentContribution>? aportes,
     String? userId,
   }) {
     return Instrument(
@@ -145,6 +216,7 @@ class Instrument {
       estado: estado ?? this.estado,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
       participaciones: participaciones ?? this.participaciones,
+      aportes: aportes ?? this.aportes,
       userId: userId ?? this.userId,
     );
   }

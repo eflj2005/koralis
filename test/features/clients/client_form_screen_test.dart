@@ -30,6 +30,11 @@ class MockClientRepo implements ClientRepository {
       clientes.add(clientConId);
     }
   }
+
+  @override
+  Future<void> deleteClient(String id) async {
+    clientes.removeWhere((c) => c.id == id);
+  }
 }
 
 /// Repositorio simulado de perfil

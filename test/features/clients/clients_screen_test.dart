@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:core/core.dart';
+import 'package:core/core.dart' hide Transaction;
 import 'package:koralis_app/app/styles.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/clients/domain/entities/client.dart';
 import 'package:koralis_app/features/clients/domain/repositories/client_repository.dart';
 import 'package:koralis_app/features/clients/domain/usecases/get_clients_usecase.dart';
 import 'package:koralis_app/features/clients/domain/usecases/add_client_usecase.dart';
+import 'package:koralis_app/features/clients/domain/usecases/delete_client_usecase.dart';
 import 'package:koralis_app/features/clients/presentation/clients_screen.dart';
+import 'package:koralis_app/features/instruments/domain/entities/instrument.dart';
+import 'package:koralis_app/features/instruments/domain/repositories/instrument_repository.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/repositories/profile_repository.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
+import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
+import 'package:koralis_app/features/transactions/domain/repositories/transaction_repository.dart';
 
 class MockProfileRepo implements ProfileRepository {
   @override
@@ -38,6 +43,44 @@ class MockClientRepo implements ClientRepository {
   Future<void> addClient(Client client) async {
     items.add(client);
   }
+
+  @override
+  Future<void> deleteClient(String id) async {
+    items.removeWhere((c) => c.id == id);
+  }
+}
+
+class _MockInstrumentRepo implements InstrumentRepository {
+  final List<Instrument> items;
+  _MockInstrumentRepo(this.items);
+
+  @override
+  Future<List<Instrument>> getInstruments() async => items;
+
+  @override
+  Future<void> saveInstrument(Instrument instrument) async {}
+
+  @override
+  Future<void> deleteInstrument(String id) async {}
+}
+
+class _MockTransactionRepo implements TransactionRepository {
+  final List<Transaction> items;
+  _MockTransactionRepo(this.items);
+
+  @override
+  Future<List<Transaction>> getTransactions({String? clienteId}) async {
+    if (clienteId != null) {
+      return items.where((t) => t.clienteId == clienteId).toList();
+    }
+    return items;
+  }
+
+  @override
+  Future<void> saveTransaction(Transaction transaction) async {}
+
+  @override
+  Future<void> deleteTransaction(String id, {String? clienteId}) async {}
 }
 
 void main() {
@@ -188,7 +231,7 @@ void main() {
       expect(find.text('Pantalla Formulario Cliente'), findsOneWidget);
     });
 
-    testWidgets('Al presionar una tarjeta de cliente debe abrir la ficha con la opción Editar Cliente', (tester) async {
+    testWidgets('Al presionar una tarjeta de cliente debe abrir la ficha informativa sin botón Editar Cliente', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -211,11 +254,6 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppStyles.theme,
-          routes: {
-            '/client_form': (context) => const Scaffold(
-                  body: Text('Pantalla Formulario Cliente'),
-                ),
-          },
           home: ClientsScreen(
             user: testUser,
             getClientsUseCase: getClients,
@@ -231,15 +269,120 @@ void main() {
       await tester.tap(find.text('Mateo Sandoval'));
       await tester.pumpAndSettle();
 
-      // Debe desplegar la ficha rápida con el botón 'Editar Cliente'
-      expect(find.text('Editar Cliente'), findsOneWidget);
+      // Debe desplegar la ficha rápida informativa sin botón 'Editar Cliente'
       expect(find.text('Cliente preferencial'), findsOneWidget);
+      expect(find.text('Editar Cliente'), findsNothing);
+    });
 
-      // Al tocar 'Editar Cliente', debe navegar a /client_form
-      await tester.tap(find.text('Editar Cliente'));
+    testWidgets('Al deslizar una tarjeta de cliente debe mostrar Editar y Eliminar', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final clientePrueba = Client(
+        id: '10',
+        nombre: 'Mateo Sandoval',
+        documento: 'CC 554433',
+        correo: 'mateo@test.com',
+        telefono: '3150009988',
+        observacion: 'Cliente preferencial',
+      );
+
+      final repo = MockClientRepo([clientePrueba]);
+      final getClients = GetClientsUseCase(repo);
+      final addClient = AddClientUseCase(repo);
+      final deleteClient = DeleteClientUseCase(
+        clientRepository: repo,
+        instrumentRepository: _MockInstrumentRepo([]),
+        transactionRepository: _MockTransactionRepo([]),
+      );
+      final getProfile = GetProfileUseCase(MockProfileRepo());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppStyles.theme,
+          routes: {
+            '/client_form': (context) => const Scaffold(
+                  body: Text('Pantalla Formulario Cliente'),
+                ),
+          },
+          home: ClientsScreen(
+            user: testUser,
+            getClientsUseCase: getClients,
+            addClientUseCase: addClient,
+            deleteClientUseCase: deleteClient,
+            getProfileUseCase: getProfile,
+          ),
+        ),
+      );
+
       await tester.pumpAndSettle();
 
+      // Inicialmente ocultos
+      expect(find.text('Editar'), findsNothing);
+      expect(find.text('Eliminar'), findsNothing);
+
+      // Deslizar de derecha a izquierda y probar Editar
+      await tester.drag(find.byType(AppListCard), const Offset(-180, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Editar'), findsOneWidget);
+      expect(find.text('Eliminar'), findsOneWidget);
+
+      await tester.tap(find.text('Editar'));
+      await tester.pumpAndSettle();
       expect(find.text('Pantalla Formulario Cliente'), findsOneWidget);
+    });
+
+    testWidgets('Al confirmar Eliminar en cliente sin asociaciones debe eliminarlo y si tiene instrumento debe bloquearlo', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final clienteSinDatos = Client(
+        id: '10',
+        nombre: 'Mateo Sandoval',
+        documento: 'CC 554433',
+        correo: 'mateo@test.com',
+        telefono: '3150009988',
+      );
+
+      final repo = MockClientRepo([clienteSinDatos]);
+      final deleteClient = DeleteClientUseCase(
+        clientRepository: repo,
+        instrumentRepository: _MockInstrumentRepo([]),
+        transactionRepository: _MockTransactionRepo([]),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppStyles.theme,
+          home: ClientsScreen(
+            user: testUser,
+            getClientsUseCase: GetClientsUseCase(repo),
+            addClientUseCase: AddClientUseCase(repo),
+            deleteClientUseCase: deleteClient,
+            getProfileUseCase: GetProfileUseCase(MockProfileRepo()),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(AppListCard), const Offset(-180, 0));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Eliminar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Eliminar Cliente'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
+      await tester.pumpAndSettle();
+
+      expect(repo.items, isEmpty);
+      expect(find.byType(EmptyWidget), findsOneWidget);
     });
   });
 }

@@ -16,6 +16,7 @@ import 'package:koralis_app/features/transactions/domain/usecases/delete_transac
 import 'package:koralis_app/features/transactions/data/repositories/transaction_repository_impl.dart';
 import '../domain/entities/instrument.dart';
 import '../domain/usecases/save_instrument_usecase.dart';
+import '../domain/usecases/process_instrument_save_usecase.dart';
 import '../domain/repositories/instrument_repository.dart';
 import '../data/repositories/instrument_repository_impl.dart';
 import '../domain/entities/bank.dart';
@@ -74,6 +75,10 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
   late final TextEditingController _retencionPorcentajeCtrl;
   late final TextEditingController _observacionCtrl;
   late String _estado;
+  Instrument? _instrumentoPersistido;
+  late List<InstrumentContribution> _aportes;
+  late String _estadoPersistido;
+  bool _huboCambiosPersistidos = false;
 
   bool _guardando = false;
 
@@ -103,11 +108,14 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     _getBanksUseCase =
         widget.getBanksUseCase ?? GetBanksUseCase(BankRepositoryImpl());
 
-    if (_esEdicion) {
+    final actual = widget.instrument;
+    _instrumentoPersistido = actual;
+    _aportes = List<InstrumentContribution>.from(actual?.aportes ?? const []);
+    _estadoPersistido = actual?.estado ?? 'Borrador';
+
+    if (_esEdicion && _aportes.isEmpty && _estadoPersistido != 'Borrador') {
       _transaccionesAsociadasFuture = _cargarTransaccionesAsociadas();
     }
-
-    final actual = widget.instrument;
     _numeroCtrl = TextEditingController(text: actual?.numero ?? '');
     _entidadCtrl = TextEditingController(text: actual?.entidad ?? '');
     _fechaApertura = actual?.fechaApertura ?? DateTime.now();
@@ -184,29 +192,35 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     }
   }
 
-  /// Guarda o actualiza una transacción de inversión asociada al cliente y a este instrumento.
-  Future<void> _ejecutarGuardarAporte(Transaction tx) async {
-    final useCase = widget.saveTransactionUseCase ??
-        SaveTransactionUseCase(TransactionRepositoryImpl(userId: widget.user.id));
-    await useCase.execute(tx);
+  /// Persiste la lista de aportes directamente en el documento del instrumento en estado Borrador
+  /// sin generar ni modificar transacciones automáticas en los clientes.
+  Future<void> _persistirAportesEnBorrador(
+    List<InstrumentContribution> nuevosAportes,
+  ) async {
+    final base = _instrumentoPersistido ?? widget.instrument!;
+    final actualizado = base.copyWith(
+      estado: 'Borrador',
+      aportes: nuevosAportes,
+    );
+    await _saveInstrumentUseCase.execute(actualizado);
+    if (mounted) {
+      setState(() {
+        _aportes = List<InstrumentContribution>.from(nuevosAportes);
+        _instrumentoPersistido = actualizado;
+        _huboCambiosPersistidos = true;
+      });
+    }
   }
 
-  /// Elimina una transacción de inversión asociada a este instrumento y reintegra el saldo al cliente.
-  Future<void> _ejecutarEliminarAporte(Transaction tx) async {
-    final useCase = widget.deleteTransactionUseCase ??
-        DeleteTransactionUseCase(TransactionRepositoryImpl(userId: widget.user.id));
-    await useCase.execute(tx.id, clienteId: tx.clienteId);
-  }
-
-  /// Solicita confirmación y elimina un aporte de cliente reintegrando el valor al disponible.
+  /// Solicita confirmación y elimina un aporte en estado Borrador sin afectar saldos.
   Future<void> _confirmarEliminarAporte(
     BuildContext context,
-    Transaction tx,
+    InstrumentContribution aporte,
   ) async {
-    if (_estado != 'Borrador') {
+    if (_estado != 'Borrador' || _estadoPersistido != 'Borrador') {
       AppMessenger.showInfoSnackBar(
         context,
-        'Los aportes solo pueden eliminarse mientras el instrumento esté en estado "Borrador"',
+        'Los aportes solo pueden eliminarse mientras el instrumento esté guardado en estado "Borrador"',
       );
       return;
     }
@@ -234,8 +248,8 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
           ],
         ),
         content: Text(
-          '¿Estás seguro de eliminar el aporte de ${_formatearMoneda(tx.valor)} perteneciente a ${tx.clienteNombre}?\n\n'
-          'El monto será reintegrado automáticamente al saldo disponible del cliente.',
+          '¿Estás seguro de eliminar el aporte de ${_formatearMoneda(aporte.valor)} perteneciente a ${aporte.clienteNombre}?\n\n'
+          'El aporte está en borrador y aún no ha afectado el saldo disponible del cliente.',
         ),
         actions: [
           TextButton(
@@ -256,14 +270,14 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
 
     if (confirmar == true && mounted) {
       try {
-        await _ejecutarEliminarAporte(tx);
+        final nuevosAportes = _aportes
+            .where((a) => a.clienteId != aporte.clienteId)
+            .toList();
+        await _persistirAportesEnBorrador(nuevosAportes);
         if (mounted) {
-          setState(() {
-            _transaccionesAsociadasFuture = _cargarTransaccionesAsociadas();
-          });
           AppMessenger.showSuccessSnackBar(
             this.context,
-            'Aporte de ${_formatearMoneda(tx.valor)} eliminado correctamente',
+            'Aporte de ${_formatearMoneda(aporte.valor)} eliminado correctamente',
           );
         }
       } catch (e) {
@@ -391,8 +405,135 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     }
   }
 
+  Future<bool> _confirmarReversionABorrador(BuildContext context) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.undo_rounded,
+              color: Colors.amber.shade800,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Revertir a Borrador',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Al regresar este instrumento a estado "Borrador", se eliminarán automáticamente '
+          'las transacciones de inversión generadas y se reintegrará el saldo disponible a los clientes.\n\n'
+          'Los aportes se conservarán en borrador para que puedas ajustarlos antes de volver a activar.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.amber.shade800,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Confirmar Reversión'),
+          ),
+        ],
+      ),
+    );
+    return confirmar == true;
+  }
+
+  Future<void> _mostrarDialogoSaldoInsuficiente(
+    BuildContext context,
+    InsufficientBalanceException error,
+  ) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.account_balance_wallet_outlined,
+              color: colorScheme.error,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Saldo Insuficiente para Activar',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'No es posible activar el instrumento porque uno o más clientes no cuentan con saldo disponible suficiente:',
+              ),
+              const SizedBox(height: 12),
+              ...error.faltantes.map(
+                (f) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.error.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          f.clienteNombre,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          f.clienteNoEncontrado
+                              ? 'El cliente ya no existe o no está disponible.'
+                              : 'Aporte requerido: ${_formatearMoneda(f.montoRequerido)}\nDisponible actual: ${_formatearMoneda(f.saldoDisponible)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.error,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _guardarInstrumento() async {
     if (!_formKey.currentState!.validate()) return;
+
+    final previo = _instrumentoPersistido ?? widget.instrument;
+    if (_esEdicion && _estadoPersistido == 'Activo' && _estado == 'Borrador') {
+      final confirmado = await _confirmarReversionABorrador(context);
+      if (!confirmado || !mounted) return;
+    }
 
     setState(() => _guardando = true);
 
@@ -416,19 +557,55 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
       estado: _estado,
       fechaCreacion: fechaCreacion,
       participaciones: widget.instrument?.participaciones ?? const [],
+      aportes: _aportes,
       userId: widget.user.id,
     );
 
+    final processUseCase = ProcessInstrumentSaveUseCase(
+      saveInstrumentUseCase: _saveInstrumentUseCase,
+      getClientsUseCase: widget.getClientsUseCase ??
+          GetClientsUseCase(ClientRepositoryImpl(userId: widget.user.id)),
+      getTransactionsUseCase: widget.getTransactionsUseCase ??
+          GetTransactionsUseCase(TransactionRepositoryImpl(userId: widget.user.id)),
+      saveTransactionUseCase: widget.saveTransactionUseCase ??
+          SaveTransactionUseCase(TransactionRepositoryImpl(userId: widget.user.id)),
+      deleteTransactionUseCase: widget.deleteTransactionUseCase ??
+          DeleteTransactionUseCase(
+            TransactionRepositoryImpl(userId: widget.user.id),
+          ),
+    );
+
     try {
-      await _saveInstrumentUseCase.execute(instrumento);
+      final resultado = await processUseCase.execute(
+        instrumentoNuevo: instrumento,
+        instrumentoPrevio: previo,
+      );
       if (mounted) {
-        AppMessenger.showSuccessSnackBar(
-          context,
-          _esEdicion
+        _huboCambiosPersistidos = false;
+        final String mensaje;
+        if (resultado.transaccionesGeneradas > 0) {
+          mensaje =
+              'Instrumento "${instrumento.numero}" activado con ${resultado.transaccionesGeneradas} transacción(es) de inversión';
+        } else if (resultado.transaccionesReversadas > 0) {
+          mensaje =
+              'Instrumento "${instrumento.numero}" revertido a Borrador y ${resultado.transaccionesReversadas} transacción(es) reintegrada(s)';
+        } else {
+          mensaje = _esEdicion
               ? 'Instrumento "${instrumento.numero}" actualizado correctamente'
-              : 'Instrumento "${instrumento.numero}" creado exitosamente',
-        );
+              : 'Instrumento "${instrumento.numero}" creado exitosamente';
+        }
+        AppMessenger.showSuccessSnackBar(context, mensaje);
         Navigator.pop(context, true);
+      }
+    } on InsufficientBalanceException catch (e) {
+      if (mounted) {
+        setState(() => _guardando = false);
+        await _mostrarDialogoSaldoInsuficiente(context, e);
+      }
+    } on InvalidInstrumentStateTransitionException catch (e) {
+      if (mounted) {
+        setState(() => _guardando = false);
+        AppMessenger.showInfoSnackBar(context, e.message);
       }
     } catch (e) {
       if (mounted) {
@@ -624,7 +801,14 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_huboCambiosPersistidos,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.pop(context, true);
+        }
+      },
+      child: Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Stack(
@@ -646,7 +830,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                           titulo: _esEdicion
                               ? 'Editar Instrumento'
                               : 'Nuevo Instrumento',
-                          onBack: () => Navigator.pop(context),
+                          onBack: () => Navigator.pop(context, _huboCambiosPersistidos),
                         ),
                         Expanded(
                           child: DefaultTabController(
@@ -1233,6 +1417,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -1270,17 +1455,16 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     );
   }
 
-  /// Abre la hoja modal emergente para registrar o modificar un aporte de cliente a este instrumento.
+  /// Abre la hoja modal emergente para registrar o modificar un aporte en borrador (sin descontar saldo aún).
   Future<void> _abrirModalNuevoAporte(
     BuildContext context, {
-    Transaction? aporteAEditar,
-    List<Transaction>? aportesExistentes,
+    InstrumentContribution? aporteAEditar,
   }) async {
-    // Restricción 4: Solo se permite gestionar aportes en estado Borrador
-    if (_estado != 'Borrador') {
+    // Restricción 4: Solo se permite gestionar aportes mientras el instrumento esté guardado en Borrador
+    if (_estado != 'Borrador' || _estadoPersistido != 'Borrador') {
       AppMessenger.showInfoSnackBar(
         context,
-        'Los aportes solo pueden gestionarse mientras el instrumento esté en estado "Borrador"',
+        'Los aportes solo pueden gestionarse mientras el instrumento esté guardado en estado "Borrador"',
       );
       return;
     }
@@ -1316,23 +1500,8 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
           // en cada frame de renderizado del modal, previniendo sobrecarga del hilo principal y ANR.
           if (!consultaIniciada && cargandoClientes && errorCarga == null) {
             consultaIniciada = true;
-            Future.wait([
-              _cargarClientesDisponibles(),
-              aportesExistentes != null
-                  ? Future.value(aportesExistentes)
-                  : _cargarTransaccionesAsociadas(),
-            ]).then((resultados) {
+            _cargarClientesDisponibles().then((todosLosClientes) {
               if (modalContext.mounted) {
-                final todosLosClientes = resultados[0] as List<Client>;
-                final txs = resultados[1] as List<Transaction>;
-                final instId = widget.instrument!.id;
-                final instNum = widget.instrument!.numero;
-                final aportesInst = txs.where((t) {
-                  final esInversion = t.tipo == TransactionType.inversion;
-                  final ref = t.instrumentoId ?? '';
-                  return esInversion && (ref == instId || ref == instNum);
-                }).toList();
-
                 setModalState(() {
                   if (esModificacion) {
                     // En edición el cliente se mantiene fijo y se precarga su entidad
@@ -1350,7 +1519,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                   } else {
                     // Restricción 1: Un mismo cliente no puede aportar más de una vez por instrumento
                     final idsClientesConAporte =
-                        aportesInst.map((t) => t.clienteId).toSet();
+                        _aportes.map((a) => a.clienteId).toSet();
                     clientesDisponibles = todosLosClientes
                         .where((c) =>
                             c.estado == 'Activo' &&
@@ -1370,12 +1539,9 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
             });
           }
 
-          // Cálculo del disponible real para el aporte:
-          // En modificación, se suma el valor actual de este aporte al disponible del cliente.
-          final saldoLibre = clienteSeleccionado?.saldoDisponible ?? 0.0;
-          final disponibleMaximo = esModificacion
-              ? (saldoLibre + aporteAEditar.valor)
-              : saldoLibre;
+          // En Borrador ningún aporte ha descontado saldo todavía, por lo que el máximo
+          // siempre corresponde directamente al saldoDisponible actual del cliente.
+          final disponibleMaximo = clienteSeleccionado?.saldoDisponible ?? 0.0;
 
           return Material(
             color: Colors.transparent,
@@ -1628,7 +1794,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                                     if (esModificacion) ...[
                                       const SizedBox(height: 2),
                                       Text(
-                                        '(Saldo libre: ${_formatearMoneda(saldoLibre)} + Aporte actual: ${_formatearMoneda(aporteAEditar.valor)})',
+                                        '(Aporte actual en borrador: ${_formatearMoneda(aporteAEditar.valor)} • aún no descontado)',
                                         style: TextStyle(
                                           fontSize: 10,
                                           color: colorScheme.onSurfaceVariant,
@@ -1697,51 +1863,51 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
 
                                 try {
                                   if (esModificacion) {
-                                    final txActualizada =
+                                    final aporteActualizado =
                                         aporteAEditar.copyWith(
                                       valor: monto,
-                                      observacion:
-                                          'Aporte a instrumento ${widget.instrument!.numero}',
+                                      fecha: DateTime.now(),
                                     );
+                                    final nuevosAportes = _aportes
+                                        .map((a) => a.clienteId ==
+                                                aporteAEditar.clienteId
+                                            ? aporteActualizado
+                                            : a)
+                                        .toList();
 
-                                    await _ejecutarGuardarAporte(txActualizada);
+                                    await _persistirAportesEnBorrador(
+                                      nuevosAportes,
+                                    );
 
                                     if (context.mounted) {
                                       Navigator.pop(modalContext);
-                                      setState(() {
-                                        _transaccionesAsociadasFuture =
-                                            _cargarTransaccionesAsociadas();
-                                      });
                                       AppMessenger.showSuccessSnackBar(
                                         context,
                                         'Aporte de ${_formatearMoneda(monto)} actualizado para ${clienteSeleccionado!.nombre}',
                                       );
                                     }
                                   } else {
-                                    final nuevaTx = Transaction(
-                                      id: '',
+                                    final nuevoAporte = InstrumentContribution(
                                       clienteId: clienteSeleccionado!.id,
                                       clienteNombre:
                                           clienteSeleccionado!.nombre,
-                                      tipo: TransactionType.inversion,
                                       valor: monto,
                                       fecha: DateTime.now(),
-                                      instrumentoId: widget.instrument!.id,
-                                      observacion:
-                                          'Aporte a instrumento ${widget.instrument!.numero}',
                                     );
+                                    final nuevosAportes = [
+                                      nuevoAporte,
+                                      ..._aportes,
+                                    ];
 
-                                    await _ejecutarGuardarAporte(nuevaTx);
+                                    await _persistirAportesEnBorrador(
+                                      nuevosAportes,
+                                    );
 
                                     if (context.mounted) {
                                       Navigator.pop(modalContext);
-                                      setState(() {
-                                        _transaccionesAsociadasFuture =
-                                            _cargarTransaccionesAsociadas();
-                                      });
                                       AppMessenger.showSuccessSnackBar(
                                         context,
-                                        'Aporte de ${_formatearMoneda(monto)} registrado para ${clienteSeleccionado!.nombre}',
+                                        'Aporte de ${_formatearMoneda(monto)} registrado en borrador para ${clienteSeleccionado!.nombre}',
                                       );
                                     }
                                   }
@@ -1768,12 +1934,250 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     );
   }
 
+  Widget _buildListaAportesVisual({
+    required BuildContext context,
+    required List<InstrumentContribution> aportes,
+    required bool puedeGestionar,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    if (aportes.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.person_off_outlined,
+              color: colorScheme.onSurfaceVariant,
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _estadoPersistido == 'Borrador'
+                    ? 'No hay aportes registrados en este instrumento todavía.'
+                    : 'No hay transacciones de inversión vinculadas a este instrumento todavía.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final totalAportado = aportes.fold<double>(0.0, (sum, a) => sum + a.valor);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Total Aportado (${aportes.length}):',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  _formatearMoneda(totalAportado),
+                  style: TextStyle(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ...aportes.map((aporte) {
+          final inicial = aporte.clienteNombre.isNotEmpty
+              ? aporte.clienteNombre[0].toUpperCase()
+              : '?';
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: colorScheme.outline.withValues(alpha: 0.2),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor:
+                          colorScheme.primary.withValues(alpha: 0.15),
+                      child: Text(
+                        inicial,
+                        style: TextStyle(
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            aporte.clienteNombre.isNotEmpty
+                                ? aporte.clienteNombre
+                                : 'Cliente',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatearFecha(aporte.fecha),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        _formatearMoneda(aporte.valor),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.primary,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (puedeGestionar) ...[
+                  const SizedBox(height: 6),
+                  Divider(
+                    height: 1,
+                    color: colorScheme.outline.withValues(alpha: 0.12),
+                  ),
+                  const SizedBox(height: 2),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        InkWell(
+                          onTap: () => _abrirModalNuevoAporte(
+                            context,
+                            aporteAEditar: aporte,
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.edit_outlined,
+                                  size: 14,
+                                  color: colorScheme.primary,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Modificar',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => _confirmarEliminarAporte(context, aporte),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 14,
+                                  color: colorScheme.error,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Eliminar',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: colorScheme.error,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   /// Construye la pestaña 2 (Aportes):
-  /// Muestra la lista de clientes que han realizado transacciones de tipo "Inversión" asociadas a este instrumento.
+  /// Muestra y permite gestionar los aportes del instrumento en estado Borrador (sin descontar saldo aún)
+  /// o visualizar en solo lectura los aportes confirmados cuando está Activo/Cerrado.
   Widget _buildTabAportes(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final esBorrador = _estado == 'Borrador';
+    final esBorradorSeleccionado = _estado == 'Borrador';
+    final puedeGestionarAportes =
+        _esEdicion && esBorradorSeleccionado && _estadoPersistido == 'Borrador';
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -1798,8 +2202,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // Restricción 4: El botón Agregar Aporte solo está disponible en estado Borrador
-              if (_esEdicion && esBorrador) ...[
+              if (puedeGestionarAportes) ...[
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: () => _abrirModalNuevoAporte(context),
@@ -1823,8 +2226,70 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Banner informativo si el instrumento no está en estado Borrador
-          if (_esEdicion && !esBorrador)
+          if (puedeGestionarAportes)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: colorScheme.primary.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Los aportes en Borrador no descuentan el saldo del cliente hasta guardar el instrumento en estado "Activo".',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (_esEdicion && esBorradorSeleccionado && _estadoPersistido != 'Borrador')
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Colors.amber.shade700.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.save_outlined,
+                    size: 20,
+                    color: Colors.amber.shade900,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Guarda el cambio de estado a "Borrador" en la pestaña Generalidades para reversar las transacciones y habilitar la edición de aportes.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.amber.shade900,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (_esEdicion && !esBorradorSeleccionado)
             Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1885,6 +2350,12 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                 ],
               ),
             )
+          else if (_aportes.isNotEmpty || _estadoPersistido == 'Borrador')
+            _buildListaAportesVisual(
+              context: context,
+              aportes: _aportes,
+              puedeGestionar: puedeGestionarAportes,
+            )
           else
             FutureBuilder<List<Transaction>>(
               future: _transaccionesAsociadasFuture,
@@ -1917,256 +2388,29 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                 final instId = widget.instrument!.id;
                 final instNum = widget.instrument!.numero;
 
-                final inversiones = todas.where((t) {
-                  final esInversion = t.tipo == TransactionType.inversion;
-                  final ref = t.instrumentoId ?? '';
-                  final coincide =
-                      ref.isNotEmpty && (ref == instId || ref == instNum);
-                  return esInversion && coincide;
-                }).toList();
-
-                if (inversiones.isEmpty) {
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest.withValues(
-                        alpha: 0.25,
+                final legacyAportes = todas
+                    .where((t) {
+                      final esInversion = t.tipo == TransactionType.inversion;
+                      final ref = t.instrumentoId ?? '';
+                      final coincide =
+                          ref.isNotEmpty && (ref == instId || ref == instNum);
+                      return esInversion && coincide;
+                    })
+                    .map(
+                      (tx) => InstrumentContribution(
+                        clienteId: tx.clienteId,
+                        clienteNombre: tx.clienteNombre,
+                        valor: tx.valor,
+                        fecha: tx.fecha,
+                        transaccionId: tx.id,
                       ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.person_off_outlined,
-                          color: colorScheme.onSurfaceVariant,
-                          size: 22,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'No hay transacciones de inversión vinculadas a este instrumento todavía.',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+                    )
+                    .toList();
 
-                final totalAportado = inversiones.fold<double>(
-                  0.0,
-                  (sum, tx) => sum + tx.valor,
-                );
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Resumen general de aportes acumulados
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 14),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest.withValues(
-                          alpha: 0.35,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Total Aportado (${inversiones.length}):',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              _formatearMoneda(totalAportado),
-                              style: TextStyle(
-                                color: colorScheme.primary,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    ...inversiones.map((tx) {
-                      final inicial = tx.clienteNombre.isNotEmpty
-                          ? tx.clienteNombre[0].toUpperCase()
-                          : '?';
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: colorScheme.outline.withValues(alpha: 0.2),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 18,
-                                  backgroundColor:
-                                      colorScheme.primary.withValues(
-                                    alpha: 0.15,
-                                  ),
-                                  child: Text(
-                                    inicial,
-                                    style: TextStyle(
-                                      color: colorScheme.primary,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        tx.clienteNombre.isNotEmpty
-                                            ? tx.clienteNombre
-                                            : 'Cliente',
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        _formatearFecha(tx.fecha),
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                          color: colorScheme.onSurfaceVariant,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    _formatearMoneda(tx.valor),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: colorScheme.primary,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            // Controles 2 y 3: Modificar y Eliminar disponibles en estado Borrador
-                            if (esBorrador) ...[
-                              const SizedBox(height: 6),
-                              Divider(
-                                height: 1,
-                                color:
-                                    colorScheme.outline.withValues(alpha: 0.12),
-                              ),
-                              const SizedBox(height: 2),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  alignment: WrapAlignment.end,
-                                  children: [
-                                    InkWell(
-                                      onTap: () => _abrirModalNuevoAporte(
-                                        context,
-                                        aporteAEditar: tx,
-                                        aportesExistentes: inversiones,
-                                      ),
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.edit_outlined,
-                                              size: 14,
-                                              color: colorScheme.primary,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'Modificar',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                                color: colorScheme.primary,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    InkWell(
-                                      onTap: () =>
-                                          _confirmarEliminarAporte(context, tx),
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.delete_outline_rounded,
-                                              size: 14,
-                                              color: colorScheme.error,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'Eliminar',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                                color: colorScheme.error,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
+                return _buildListaAportesVisual(
+                  context: context,
+                  aportes: legacyAportes,
+                  puedeGestionar: false,
                 );
               },
             ),

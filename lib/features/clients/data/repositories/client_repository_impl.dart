@@ -120,5 +120,13 @@ class ClientRepositoryImpl implements ClientRepository {
       docId: docId,
     );
   }
+
+  @override
+  Future<void> deleteClient(String id) async {
+    await _firestore.deleteDocument(
+      collectionPath: _collectionPath,
+      docId: id,
+    );
+  }
 }
 

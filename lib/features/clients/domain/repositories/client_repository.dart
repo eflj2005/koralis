@@ -7,4 +7,7 @@ abstract class ClientRepository {
 
   /// Registra y persiste un nuevo cliente en el repositorio.
   Future<void> addClient(Client client);
+
+  /// Elimina un cliente por su identificador único.
+  Future<void> deleteClient(String id);
 }

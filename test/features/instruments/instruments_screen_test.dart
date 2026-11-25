@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:core/core.dart' hide Transaction;
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/instruments/domain/entities/instrument.dart';
 import 'package:koralis_app/features/instruments/domain/repositories/instrument_repository.dart';
 import 'package:koralis_app/features/instruments/domain/usecases/get_instruments_usecase.dart';
+import 'package:koralis_app/features/instruments/domain/usecases/delete_instrument_usecase.dart';
 import 'package:koralis_app/features/instruments/presentation/instruments_screen.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/repositories/profile_repository.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
+import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
+import 'package:koralis_app/features/transactions/domain/repositories/transaction_repository.dart';
 
 class MockProfileRepo implements ProfileRepository {
   @override
@@ -45,6 +49,20 @@ class MockInstrumentRepo implements InstrumentRepository {
   Future<void> deleteInstrument(String id) async {
     items.removeWhere((i) => i.id == id);
   }
+}
+
+class _MockTransactionRepo implements TransactionRepository {
+  final List<Transaction> txs;
+  _MockTransactionRepo(this.txs);
+
+  @override
+  Future<List<Transaction>> getTransactions({String? clienteId}) async => txs;
+
+  @override
+  Future<void> saveTransaction(Transaction transaction) async {}
+
+  @override
+  Future<void> deleteTransaction(String id, {String? clienteId}) async {}
 }
 
 void main() {
@@ -193,11 +211,138 @@ void main() {
       await tester.tap(find.textContaining('Davivienda'));
       await tester.pumpAndSettle();
 
-      // Verificar que se abrió el bottom sheet de detalle
+      // Verificar que se abrió el bottom sheet de detalle sin botón Editar Instrumento
       expect(find.text('Período de Inversión'), findsOneWidget);
       expect(find.text('Rendimientos Brutos'), findsOneWidget);
       expect(find.text('Activo'), findsWidgets);
-      expect(find.text('Editar Instrumento'), findsOneWidget);
+      expect(find.text('Editar Instrumento'), findsNothing);
+    });
+
+    testWidgets('Al deslizar una tarjeta de instrumento debe mostrar Editar y Eliminar', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final inst = Instrument(
+        id: 'inst-1',
+        numero: 'CDT-9988',
+        entidad: 'Davivienda',
+        fechaApertura: DateTime(2026, 3, 1),
+        dias: 60,
+        tasaIea: 11.75,
+        valorInvertido: 5000000.0,
+        rendimientoTProyec: 96000.0,
+        retencionPorcentaje: 4.0,
+        estado: 'Activo',
+      );
+
+      final repo = MockInstrumentRepo([inst]);
+      final getInstruments = GetInstrumentsUseCase(repo);
+      final deleteInstrument = DeleteInstrumentUseCase(
+        instrumentRepository: repo,
+        transactionRepository: _MockTransactionRepo([]),
+      );
+      final getProfile = GetProfileUseCase(MockProfileRepo());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          routes: {
+            '/instrument_form': (context) => const Scaffold(
+                  body: Text('Pantalla Formulario Instrumento'),
+                ),
+          },
+          home: InstrumentsScreen(
+            user: testUser,
+            getInstrumentsUseCase: getInstruments,
+            deleteInstrumentUseCase: deleteInstrument,
+            getProfileUseCase: getProfile,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.drag(find.byType(AppListCard), const Offset(-180, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Editar'), findsOneWidget);
+      expect(find.text('Eliminar'), findsOneWidget);
+
+      // Al intentar eliminar un instrumento Activo, debe bloquearse tras confirmar
+      await tester.tap(find.text('Eliminar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Eliminar Instrumento'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
+      await tester.pumpAndSettle();
+      expect(repo.items.length, equals(1));
+      expect(
+        find.textContaining('Solo se pueden eliminar instrumentos en estado "Borrador"'),
+        findsOneWidget,
+      );
+
+      ScaffoldMessenger.of(tester.element(find.byType(Scaffold))).clearSnackBars();
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(AppListCard), const Offset(-180, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Editar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pantalla Formulario Instrumento'), findsOneWidget);
+    });
+
+    testWidgets('Al confirmar Eliminar en instrumento Borrador sin transacciones debe eliminarlo', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final instBorrador = Instrument(
+        id: 'inst-borrador',
+        numero: 'CDT-DRAFT',
+        entidad: 'Bancolombia',
+        fechaApertura: DateTime(2026, 3, 1),
+        dias: 30,
+        tasaIea: 10.0,
+        valorInvertido: 1000000.0,
+        rendimientoTProyec: 8000.0,
+        estado: 'Borrador',
+      );
+
+      final repo = MockInstrumentRepo([instBorrador]);
+      final deleteInstrument = DeleteInstrumentUseCase(
+        instrumentRepository: repo,
+        transactionRepository: _MockTransactionRepo([]),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          home: InstrumentsScreen(
+            user: testUser,
+            getInstrumentsUseCase: GetInstrumentsUseCase(repo),
+            deleteInstrumentUseCase: deleteInstrument,
+            getProfileUseCase: GetProfileUseCase(MockProfileRepo()),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.drag(find.byType(AppListCard), const Offset(-180, 0));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Eliminar'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
+      await tester.pumpAndSettle();
+
+      expect(repo.items, isEmpty);
+      expect(find.text('No hay instrumentos registrados'), findsOneWidget);
     });
 
     testWidgets('Debe mostrar badge Borrador cuando el instrumento tiene estado Borrador', (tester) async {

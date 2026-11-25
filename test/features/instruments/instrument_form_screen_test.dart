@@ -83,6 +83,10 @@ class MockClientRepo implements ClientRepository {
 
   @override
   Future<void> addClient(Client client) async => clientes.add(client);
+
+  @override
+  Future<void> deleteClient(String id) async =>
+      clientes.removeWhere((c) => c.id == id);
 }
 
 class MockTransactionRepo implements TransactionRepository {
@@ -364,6 +368,7 @@ void main() {
         valorInvertido: 50000000,
         rendimientoTProyec: 2500000,
         retencionPorcentaje: 4.0,
+        estado: 'Activo',
         observacion: 'Prueba de clientes asociados',
       );
 
@@ -545,8 +550,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // Inicialmente no hay aportes, se muestra el estado vacío y el botón
-      expect(find.text('No hay transacciones de inversión vinculadas a este instrumento todavía.'), findsOneWidget);
+      expect(find.text('No hay aportes registrados en este instrumento todavía.'), findsOneWidget);
       expect(find.text('Agregar Aporte'), findsOneWidget);
+      expect(
+        find.textContaining('Los aportes en Borrador no descuentan el saldo del cliente hasta guardar el instrumento en estado "Activo".'),
+        findsOneWidget,
+      );
 
       // Abrir modal de nuevo aporte
       await tester.tap(find.text('Agregar Aporte'));
@@ -591,7 +600,13 @@ void main() {
       // El modal debe haberse cerrado
       expect(find.text('Nuevo Aporte de Inversión'), findsNothing);
 
-      // En Tab 2 ahora debe listarse la nueva inversión (aparece en el total y en la tarjeta individual)
+      // En Borrador NO debe haberse creado ninguna transacción automática todavía
+      expect(txRepo.transacciones, isEmpty);
+      expect(repoInst.items.single.aportes.length, equals(1));
+      expect(repoInst.items.single.aportes.single.valor, equals(5000000));
+      expect(repoInst.items.single.aportes.single.transaccionId, isNull);
+
+      // En Tab 2 ahora debe listarse el aporte en borrador (aparece en el total y en la tarjeta individual)
       expect(find.text('Total Aportado (1):'), findsOneWidget);
       expect(find.text('Carlos Santana'), findsOneWidget);
       expect(find.text('\$ 5.000.000,00'), findsNWidgets(2));
@@ -615,7 +630,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // -----------------------------------------------------------------------
-      // Control 2: Los aportes se pueden modificar
+      // Control 2: Los aportes se pueden modificar (el disponible sigue siendo 15M porque no se ha descontado)
       // -----------------------------------------------------------------------
       await tester.ensureVisible(find.text('Modificar'));
       await tester.tap(find.text('Modificar'));
@@ -624,6 +639,8 @@ void main() {
       expect(find.text('Modificar Aporte de Inversión'), findsOneWidget);
       expect(find.text('Carlos Santana - 10203040'), findsOneWidget);
       expect(find.text('Disponible Máximo para este Aporte'), findsOneWidget);
+      expect(find.text('\$ 15.000.000,00'), findsOneWidget);
+      expect(find.textContaining('aún no descontado'), findsOneWidget);
 
       final valorModificarField = find.widgetWithText(AppTextField, 'Valor a Invertir (\$)');
       await tester.enterText(valorModificarField, '8000000');
@@ -634,27 +651,256 @@ void main() {
 
       expect(find.text('Modificar Aporte de Inversión'), findsNothing);
       expect(find.text('\$ 8.000.000,00'), findsNWidgets(2));
+      expect(txRepo.transacciones, isEmpty);
+      expect(repoInst.items.single.aportes.single.valor, equals(8000000));
 
       // Limpiar cualquier SnackBar flotante de actualización
       ScaffoldMessenger.of(tester.element(find.byType(Scaffold))).clearSnackBars();
       await tester.pumpAndSettle();
 
       // -----------------------------------------------------------------------
-      // Control 3: Los aportes se pueden eliminar
+      // Control 3: Los aportes se pueden eliminar sin afectar transacciones
       // -----------------------------------------------------------------------
       await tester.ensureVisible(find.text('Eliminar'));
       await tester.tap(find.text('Eliminar'));
       await tester.pumpAndSettle();
 
       expect(find.text('Eliminar Aporte'), findsOneWidget);
-      expect(find.textContaining('El monto será reintegrado automáticamente'), findsOneWidget);
+      expect(find.textContaining('El aporte está en borrador y aún no ha afectado el saldo disponible del cliente.'), findsOneWidget);
 
       // Confirmar eliminación en el diálogo
       await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
       await tester.pumpAndSettle();
 
-      // La lista debe quedar nuevamente vacía
-      expect(find.text('No hay transacciones de inversión vinculadas a este instrumento todavía.'), findsOneWidget);
+      // La lista debe quedar nuevamente vacía y txRepo sigue vacío
+      expect(find.text('No hay aportes registrados en este instrumento todavía.'), findsOneWidget);
+      expect(txRepo.transacciones, isEmpty);
+      expect(repoInst.items.single.aportes, isEmpty);
+    });
+
+    testWidgets('Al guardar el instrumento en Activo debe generar las transacciones de inversión y al revertir a Borrador debe eliminarlas', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final cliente1 = Client(
+        id: 'cli-001',
+        nombre: 'Carlos Santana',
+        documento: '10203040',
+        correo: 'carlos@example.com',
+        telefono: '3001234567',
+        transacciones: [
+          Transaction(
+            id: 'tx-recarga-1',
+            clienteId: 'cli-001',
+            clienteNombre: 'Carlos Santana',
+            tipo: TransactionType.recarga,
+            valor: 15000000,
+            fecha: DateTime(2026, 1, 10),
+          ),
+        ],
+      );
+
+      final borradorConAporte = Instrument(
+        id: 'inst-act-flow',
+        numero: 'CDT-2026-FLOW',
+        entidad: 'Bancolombia',
+        fechaApertura: DateTime(2026, 3, 1),
+        dias: 90,
+        tasaIea: 12.0,
+        valorInvertido: 10000000,
+        rendimientoTProyec: 300000,
+        retencionPorcentaje: 4.0,
+        estado: 'Borrador',
+        aportes: [
+          InstrumentContribution(
+            clienteId: 'cli-001',
+            clienteNombre: 'Carlos Santana',
+            valor: 10000000,
+            fecha: DateTime(2026, 3, 1),
+          ),
+        ],
+      );
+
+      final repoInst = MockInstrumentRepo();
+      await repoInst.saveInstrument(borradorConAporte);
+      final saveUseCase = SaveInstrumentUseCase(repoInst);
+      final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getBanks = GetBanksUseCase(MockBankRepo());
+      final txRepo = MockTransactionRepo(transacciones: []);
+      final getTransactions = GetTransactionsUseCase(txRepo);
+      final saveTransaction = SaveTransactionUseCase(txRepo);
+      final deleteTransaction = DeleteTransactionUseCase(txRepo);
+      final getClients = GetClientsUseCase(MockClientRepo(clientes: [cliente1]));
+
+      Future<void> abrirFormularioConNavigator(Instrument inst) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: testTheme,
+            home: Builder(
+              builder: (ctx) => Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(ctx).push(
+                        MaterialPageRoute<bool>(
+                          builder: (_) => InstrumentFormScreen(
+                            user: testUser,
+                            instrument: inst,
+                            saveInstrumentUseCase: saveUseCase,
+                            getProfileUseCase: getProfile,
+                            getBanksUseCase: getBanks,
+                            getTransactionsUseCase: getTransactions,
+                            getClientsUseCase: getClients,
+                            saveTransactionUseCase: saveTransaction,
+                            deleteTransactionUseCase: deleteTransaction,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('AbrirForm'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('AbrirForm'));
+        await tester.pumpAndSettle();
+      }
+
+      await abrirFormularioConNavigator(borradorConAporte);
+
+      // Cambiar estado a Activo y presionar Guardar Cambios
+      await tester.ensureVisible(find.text('Activo'));
+      await tester.tap(find.text('Activo'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Guardar Cambios'));
+      await tester.tap(find.text('Guardar Cambios'));
+      await tester.pumpAndSettle();
+
+      // Se debe haber generado la transacción automática de inversión
+      expect(txRepo.transacciones.length, equals(1));
+      expect(txRepo.transacciones.single.tipo, equals(TransactionType.inversion));
+      expect(txRepo.transacciones.single.valor, equals(10000000));
+      expect(repoInst.items.single.estado, equals('Activo'));
+      expect(repoInst.items.single.aportes.single.transaccionId, isNotNull);
+
+      // Ahora abrimos el instrumento ya Activo y lo revertimos a Borrador
+      ScaffoldMessenger.of(tester.element(find.byType(Scaffold))).clearSnackBars();
+      await tester.pumpAndSettle();
+
+      await abrirFormularioConNavigator(repoInst.items.single);
+
+      await tester.ensureVisible(find.text('Borrador'));
+      await tester.tap(find.text('Borrador'));
+      await tester.pumpAndSettle();
+
+      ScaffoldMessenger.of(tester.element(find.byType(Scaffold))).clearSnackBars();
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Guardar Cambios'));
+      await tester.tap(find.text('Guardar Cambios'));
+      await tester.pumpAndSettle();
+
+      // Debe solicitar confirmación de reversión
+      expect(find.text('Revertir a Borrador'), findsOneWidget);
+      await tester.tap(find.text('Confirmar Reversión'));
+      await tester.pumpAndSettle();
+
+      // Las transacciones automáticas deben haberse eliminado y el aporte conservado sin transaccionId
+      expect(txRepo.transacciones, isEmpty);
+      expect(repoInst.items.single.estado, equals('Borrador'));
+      expect(repoInst.items.single.aportes.length, equals(1));
+      expect(repoInst.items.single.aportes.single.transaccionId, isNull);
+    });
+
+    testWidgets('Si un cliente ya no tiene saldo disponible suficiente al activar, muestra diálogo y bloquea activación', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // Saldo disponible actual: 3M (menor que su aporte de 8M)
+      final clienteSinSaldo = Client(
+        id: 'cli-001',
+        nombre: 'Carlos Santana',
+        documento: '10203040',
+        correo: 'carlos@example.com',
+        telefono: '3001234567',
+        transacciones: [
+          Transaction(
+            id: 'tx-recarga-1',
+            clienteId: 'cli-001',
+            clienteNombre: 'Carlos Santana',
+            tipo: TransactionType.recarga,
+            valor: 3000000,
+            fecha: DateTime(2026, 1, 10),
+          ),
+        ],
+      );
+
+      final borradorConAporte = Instrument(
+        id: 'inst-no-funds',
+        numero: 'CDT-2026-NF',
+        entidad: 'Bancolombia',
+        fechaApertura: DateTime(2026, 3, 1),
+        dias: 90,
+        tasaIea: 12.0,
+        valorInvertido: 8000000,
+        rendimientoTProyec: 250000,
+        estado: 'Borrador',
+        aportes: [
+          InstrumentContribution(
+            clienteId: 'cli-001',
+            clienteNombre: 'Carlos Santana',
+            valor: 8000000,
+            fecha: DateTime(2026, 3, 1),
+          ),
+        ],
+      );
+
+      final repoInst = MockInstrumentRepo();
+      await repoInst.saveInstrument(borradorConAporte);
+      final txRepo = MockTransactionRepo(transacciones: []);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          home: InstrumentFormScreen(
+            user: testUser,
+            instrument: borradorConAporte,
+            saveInstrumentUseCase: SaveInstrumentUseCase(repoInst),
+            getProfileUseCase: GetProfileUseCase(MockProfileRepo()),
+            getBanksUseCase: GetBanksUseCase(MockBankRepo()),
+            getTransactionsUseCase: GetTransactionsUseCase(txRepo),
+            getClientsUseCase: GetClientsUseCase(MockClientRepo(clientes: [clienteSinSaldo])),
+            saveTransactionUseCase: SaveTransactionUseCase(txRepo),
+            deleteTransactionUseCase: DeleteTransactionUseCase(txRepo),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Activo'));
+      await tester.tap(find.text('Activo'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Guardar Cambios'));
+      await tester.tap(find.text('Guardar Cambios'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Saldo Insuficiente para Activar'), findsOneWidget);
+      expect(find.textContaining('Carlos Santana'), findsWidgets);
+      expect(txRepo.transacciones, isEmpty);
+      expect(repoInst.items.single.estado, equals('Borrador'));
+
+      await tester.tap(find.text('Entendido'));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('Restricción 4: En estado Activo los aportes quedan bloqueados para creación, edición o eliminación', (tester) async {

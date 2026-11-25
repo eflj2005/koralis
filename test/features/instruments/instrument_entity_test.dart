@@ -90,5 +90,33 @@ void main() {
       final cerrado = instrument.copyWith(estado: 'Cerrado');
       expect(cerrado.estado, equals('Cerrado'));
     });
+
+    test('InstrumentContribution toMap, fromMap y copyWith con clearTransaccionId funcionan correctamente', () {
+      final fechaAporte = DateTime(2026, 4, 10, 14, 30);
+      final aporte = InstrumentContribution(
+        clienteId: 'cli-001',
+        clienteNombre: 'Ana María',
+        valor: 7500000.0,
+        fecha: fechaAporte,
+        transaccionId: 'inv_inst_1_cli-001',
+      );
+
+      final map = aporte.toMap();
+      final reconstruido = InstrumentContribution.fromMap(map);
+
+      expect(reconstruido.clienteId, equals('cli-001'));
+      expect(reconstruido.clienteNombre, equals('Ana María'));
+      expect(reconstruido.valor, equals(7500000.0));
+      expect(reconstruido.fecha, equals(fechaAporte));
+      expect(reconstruido.transaccionId, equals('inv_inst_1_cli-001'));
+
+      final revertido = reconstruido.copyWith(clearTransaccionId: true);
+      expect(revertido.transaccionId, isNull);
+      expect(revertido.valor, equals(7500000.0));
+
+      final instConAportes = instrument.copyWith(aportes: [aporte]);
+      expect(instConAportes.aportes.length, equals(1));
+      expect(instConAportes.aportes.first.clienteNombre, equals('Ana María'));
+    });
   });
 }

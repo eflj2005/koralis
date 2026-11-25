@@ -140,11 +140,12 @@ Ubicación: [app_cards.dart](file:///d:/Projects/Flutter/koralis/packages/core/l
 ### `AppHeaderTitle`
 Encabezado tipográfico sin sombras que se integra con el fondo de la pantalla. Muestra un título principal de gran contraste y subtítulo explicativo.
 
-### `AppListCard`
+### `AppListCard` y `AppSwipeAction`
 Bloque rectangular apilable optimizado para listas densas.
 - **Avatar:** Iniciales o ícono con color cromático distintivo.
 - **Jerarquía:** Soporta fusión inteligente de subtítulo en segunda línea (`fusionarSubtituloSiMultilinea`) para pantallas estrechas.
 - **Insignia:** Espacio reservado para badges de estado (`AppBadge`).
+- **Deslizamiento (Swipe):** Mediante `accionesSwipe` (`List<AppSwipeAction>`), permite revelar botones de acción (por ejemplo, `Editar` y `Eliminar`) al deslizar horizontalmente de derecha a izquierda.
 
 ```dart
 AppListCard(
@@ -154,6 +155,14 @@ AppListCard(
   textoAvatar: 'C',
   colorAcento: Colors.blueAccent,
   badge: const AppBadge(texto: 'Activo', color: Colors.green),
+  accionesSwipe: [
+    AppSwipeAction(
+      etiqueta: 'Editar',
+      icono: Icons.edit_outlined,
+      colorFondo: Colors.blue,
+      onTap: () => _editarCliente(cliente),
+    ),
+  ],
   onTap: () => _verDetalleCliente(cliente.id),
 )
 ```

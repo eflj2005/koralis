@@ -25,6 +25,7 @@ Ubicación: [instrument.dart](file:///d:/Projects/Flutter/koralis/lib/features/i
 | `estado` | `String` | Estado operativo: `'Borrador'`, `'Activo'` o `'Cerrado'`. |
 | `userId` | `String?` | ID del usuario propietario para aislamiento multi-tenant. |
 | `participaciones` | `List<InstrumentClientShare>` | Lista de clientes inversores asociados. |
+| `aportes` | `List<InstrumentContribution>` | Lista de aportes registrados en borrador o confirmados con su `transaccionId`. |
 
 ---
 
@@ -64,13 +65,13 @@ El formulario de instrumentos organiza la captura de datos en **3 Pestañas (Tab
 - Resumen financiero dinámico en tiempo real que se recalcula a medida que el usuario digita los montos.
 
 ### Pestaña 2: Aportes de Clientes
-- Permite vincular clientes registrados que dispongan de saldo a favor.
-- Al agregar un aporte, se valida que el monto no supere el saldo disponible del cliente.
-- Sumatoria reactiva de aportes para comparar contra el `valorInvertido` total del instrumento.
+- Permite vincular clientes activos registrados que dispongan de saldo a favor.
+- Al agregar o modificar un aporte en estado `Borrador`, se valida contra el saldo disponible del cliente y se persiste en el arreglo `aportes` del instrumento **sin generar transacciones automáticas ni descontar saldo**.
+- Sumatoria reactiva de aportes registrados en el instrumento.
 
 ### Pestaña 3: Resultados y Cierre
 - En modo edición, expone el balance consolidado del instrumento.
-- Muestra el desglose de clientes partícipes y la proyección de sus retornos proporcionales netos de retención.
+- Muestra el desglose de rendimiento proyectado, retención en la fuente y rendimiento neto final.
 
 ---
 
@@ -81,7 +82,8 @@ El ciclo de vida del instrumento impone reglas estrictas de integridad:
 ```mermaid
 stateDiagram-v2
     [*] --> Borrador: Creación inicial
-    Borrador --> Activo: Confirmación de fondos
+    Borrador --> Activo: Re-validación de saldo y generación de transacciones (inversión)
+    Activo --> Borrador: Reversión y eliminación automática de transacciones
     Borrador --> [*]: Eliminación permitida
     Activo --> Cerrado: Vencimiento y liquidación
     Cerrado --> [*]: Historial inmutable
@@ -89,12 +91,14 @@ stateDiagram-v2
 
 1. **Estado `Borrador`:**
    - Permite modificar todos los valores del instrumento.
-   - Permite agregar, editar o remover aportes de clientes libremente.
-2. **Estado `Activo` (Restricción Crítica):**
-   - Una vez formalizado el instrumento a estado **Activo**, los aportes de los clientes quedan **estrictamente bloqueados**.
-   - No se permite agregar nuevos aportes, ni editar o borrar los existentes, garantizando la inmutabilidad de los fondos comprometidos.
+   - Permite agregar, editar o remover aportes de clientes libremente dentro del documento del instrumento, sin afectar todavía el saldo disponible de los clientes.
+2. **Estado `Activo` (Activación y Restricción Crítica):**
+   - Al guardar el instrumento cambiando a estado **Activo**, el sistema re-valida el saldo disponible actual de todos los clientes partícipes; si alguno no tiene fondos suficientes, bloquea la activación e informa el detalle.
+   - Si todos tienen saldo, se generan automáticamente las transacciones de tipo `inversion` (descontando su saldo) y se vinculan mediante `transaccionId`.
+   - Mientras permanezca **Activo**, los aportes de los clientes quedan **estrictamente bloqueados** para edición o eliminación directa.
+   - Si se revierte de **Activo** a **Borrador**, el sistema solicita confirmación, elimina automáticamente las transacciones de inversión generadas (reintegrando el saldo a los clientes) y conserva los aportes en borrador.
 3. **Estado `Cerrado`:**
-   - Instrumento liquidado. Los rendimientos netos calculados se reintegran al disponible de cada cliente participante mediante transacciones de tipo `retorno`.
+   - Instrumento liquidado. No puede revertirse a `Borrador`, ni activarse directamente desde `Borrador` si tiene aportes pendientes de procesar.
 
 ---
 

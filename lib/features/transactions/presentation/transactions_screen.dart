@@ -10,6 +10,7 @@ import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase
 import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
 import '../domain/entities/transaction.dart';
 import '../domain/usecases/get_transactions_usecase.dart';
+import '../domain/usecases/delete_transaction_usecase.dart';
 import '../domain/repositories/transaction_repository.dart';
 import '../data/repositories/transaction_repository_impl.dart';
 import 'transaction_form_screen.dart';
@@ -18,6 +19,7 @@ import 'transaction_form_screen.dart';
 class TransactionsScreen extends StatefulWidget {
   final User user;
   final GetTransactionsUseCase? getTransactionsUseCase;
+  final DeleteTransactionUseCase? deleteTransactionUseCase;
   final GetProfileUseCase? getProfileUseCase;
   final GetClientsUseCase? getClientsUseCase;
 
@@ -25,6 +27,7 @@ class TransactionsScreen extends StatefulWidget {
     super.key,
     required this.user,
     this.getTransactionsUseCase,
+    this.deleteTransactionUseCase,
     this.getProfileUseCase,
     this.getClientsUseCase,
   });
@@ -37,6 +40,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   static const double _anchoBarraBase = 58.0;
 
   late final GetTransactionsUseCase _getTransactionsUseCase;
+  DeleteTransactionUseCase? _deleteTransactionUseCase;
   late final GetProfileUseCase _getProfileUseCase;
   late final GetClientsUseCase _getClientsUseCase;
 
@@ -63,6 +67,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
     _getTransactionsUseCase = widget.getTransactionsUseCase ??
         GetTransactionsUseCase(obtenerRepositorio());
+    _deleteTransactionUseCase = widget.deleteTransactionUseCase;
     _getProfileUseCase =
         widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
     _getClientsUseCase = widget.getClientsUseCase ??
@@ -210,6 +215,96 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
     if (actualizado == true) {
       _cargarDatos();
+    }
+  }
+
+  DeleteTransactionUseCase _obtenerDeleteTransactionUseCase() =>
+      _deleteTransactionUseCase ??= DeleteTransactionUseCase(
+        TransactionRepositoryImpl(userId: widget.user.id),
+      );
+
+  /// Solicita confirmación, elimina una transacción manual y notifica el nuevo saldo del cliente.
+  Future<void> _confirmarEliminarTransaccion(
+    BuildContext context,
+    Transaction tx,
+  ) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: colorScheme.error,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Eliminar Transacción',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          '¿Estás seguro de eliminar la ${tx.tipo.etiqueta.toLowerCase()} de ${_formatearMoneda(tx.valor)} del cliente ${tx.clienteNombre}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true || !mounted) return;
+
+    try {
+      await _obtenerDeleteTransactionUseCase().execute(
+        tx.id,
+        clienteId: tx.clienteId,
+      );
+      final txsCliente =
+          await _getTransactionsUseCase.execute(clienteId: tx.clienteId);
+      final nuevoSaldo = txsCliente.fold<double>(
+        0.0,
+        (sum, t) => sum + t.valorFirmado,
+      );
+      final saldoTexto = nuevoSaldo < 0
+          ? '- ${_formatearMoneda(nuevoSaldo.abs())}'
+          : _formatearMoneda(nuevoSaldo);
+
+      if (!mounted) return;
+      _cargarDatos();
+
+      if (nuevoSaldo < 0) {
+        AppMessenger.showErrorSnackBar(
+          this.context,
+          'Transacción eliminada. Nuevo saldo de ${tx.clienteNombre}: $saldoTexto (saldo negativo)',
+        );
+      } else {
+        AppMessenger.showSuccessSnackBar(
+          this.context,
+          'Transacción eliminada. Nuevo saldo de ${tx.clienteNombre}: $saldoTexto',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      AppMessenger.showErrorSnackBar(
+        this.context,
+        'No fue posible eliminar la transacción: $e',
+      );
     }
   }
 
@@ -478,16 +573,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
             const SizedBox(height: 14),
 
-            if (esManual)
-              AppButton(
-                texto: 'Editar Transacción',
-                icono: Icons.edit_outlined,
-                onPressed: () {
-                  Navigator.pop(context);
-                  _navegarEditarTransaccion(context, transaccion);
-                },
-              )
-            else
+            if (!esManual)
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
                 decoration: BoxDecoration(
@@ -880,6 +966,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                 itemCount: filtradas.length,
                                 itemBuilder: (context, index) {
                                   final tx = filtradas[index];
+                                  final esManual =
+                                      tx.tipo == TransactionType.recarga ||
+                                          tx.tipo == TransactionType.retiro;
                                   final refInst = (tx.instrumentoId != null &&
                                           tx.instrumentoId!.isNotEmpty)
                                       ? ' • Inst: ${tx.instrumentoId}'
@@ -918,6 +1007,30 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                       ),
                                     ),
                                     onTap: () => _mostrarFichaDetalle(context, tx),
+                                    accionesSwipe: esManual
+                                        ? [
+                                            AppSwipeAction(
+                                              etiqueta: 'Editar',
+                                              icono: Icons.edit_outlined,
+                                              colorFondo: colorScheme.primary,
+                                              onTap: () =>
+                                                  _navegarEditarTransaccion(
+                                                context,
+                                                tx,
+                                              ),
+                                            ),
+                                            AppSwipeAction(
+                                              etiqueta: 'Eliminar',
+                                              icono: Icons.delete_outline_rounded,
+                                              colorFondo: colorScheme.error,
+                                              onTap: () =>
+                                                  _confirmarEliminarTransaccion(
+                                                context,
+                                                tx,
+                                              ),
+                                            ),
+                                          ]
+                                        : null,
                                   );
                                 },
                               );

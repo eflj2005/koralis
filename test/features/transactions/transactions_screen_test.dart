@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:core/core.dart' hide Transaction;
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/clients/domain/entities/client.dart';
 import 'package:koralis_app/features/clients/domain/repositories/client_repository.dart';
@@ -11,6 +12,7 @@ import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase
 import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
 import 'package:koralis_app/features/transactions/domain/repositories/transaction_repository.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/get_transactions_usecase.dart';
+import 'package:koralis_app/features/transactions/domain/usecases/delete_transaction_usecase.dart';
 import 'package:koralis_app/features/transactions/presentation/transactions_screen.dart';
 
 class MockProfileRepo implements ProfileRepository {
@@ -35,6 +37,9 @@ class MockClientRepo implements ClientRepository {
 
   @override
   Future<void> addClient(Client client) async {}
+
+  @override
+  Future<void> deleteClient(String id) async {}
 }
 
 class MockTransactionRepo implements TransactionRepository {
@@ -309,10 +314,150 @@ void main() {
       await tester.tap(find.textContaining('+ \$ 2.000.000,00'));
       await tester.pumpAndSettle();
 
-      // Verificar modal inferior
+      // Verificar modal inferior sin botón Editar Transacción
       expect(find.text('Valor de la Transacción'), findsOneWidget);
       expect(find.text('Depósito en efectivo'), findsWidgets);
-      expect(find.text('Editar Transacción'), findsOneWidget);
+      expect(find.text('Editar Transacción'), findsNothing);
+    });
+
+    testWidgets('El swipe muestra Editar y Eliminar solo en transacciones manuales y no en automáticas', (tester) async {
+      tester.view.physicalSize = const Size(420, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final txManual = Transaction(
+        id: 'tx-manual',
+        clienteId: 'c1',
+        clienteNombre: 'Carlos Gómez',
+        tipo: TransactionType.recarga,
+        valor: 2000000.0,
+        fecha: DateTime(ahora.year, ahora.month, 10),
+      );
+      final txAuto = Transaction(
+        id: 'tx-auto',
+        clienteId: 'c2',
+        clienteNombre: 'Mariana Duarte',
+        tipo: TransactionType.inversion,
+        valor: 1000000.0,
+        fecha: DateTime(ahora.year, ahora.month, 5),
+        instrumentoId: 'inst-1',
+      );
+
+      final txRepo = MockTransactionRepo([txManual, txAuto]);
+      final clientRepo = MockClientRepo(testClients);
+      final getTransactions = GetTransactionsUseCase(txRepo);
+      final deleteTransaction = DeleteTransactionUseCase(txRepo);
+      final getProfile = GetProfileUseCase(MockProfileRepo());
+      final getClients = GetClientsUseCase(clientRepo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('es', 'CO'),
+            Locale('es', ''),
+            Locale('en', ''),
+          ],
+          locale: const Locale('es', 'CO'),
+          routes: {
+            '/transaction_form': (context) => const Scaffold(
+                  body: Text('Pantalla Formulario Transacción'),
+                ),
+          },
+          home: TransactionsScreen(
+            user: testUser,
+            getTransactionsUseCase: getTransactions,
+            deleteTransactionUseCase: deleteTransaction,
+            getProfileUseCase: getProfile,
+            getClientsUseCase: getClients,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Intentar swipe en transacción automática (Mariana Duarte) -> NO debe mostrar acciones
+      await tester.drag(find.byType(AppListCard).at(1), const Offset(-180, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('Editar'), findsNothing);
+      expect(find.text('Eliminar'), findsNothing);
+
+      // Swipe en transacción manual (Carlos Gómez) -> Sí muestra Editar y Eliminar
+      await tester.drag(find.byType(AppListCard).first, const Offset(-180, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('Editar'), findsOneWidget);
+      expect(find.text('Eliminar'), findsOneWidget);
+
+      await tester.tap(find.text('Editar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pantalla Formulario Transacción'), findsOneWidget);
+    });
+
+    testWidgets('Al eliminar una recarga manual debe notificar el nuevo saldo incluso si resulta negativo', (tester) async {
+      tester.view.physicalSize = const Size(420, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final txRecarga = Transaction(
+        id: 'tx-rec',
+        clienteId: 'c1',
+        clienteNombre: 'Carlos Gómez',
+        tipo: TransactionType.recarga,
+        valor: 2000000.0,
+        fecha: DateTime(ahora.year, ahora.month, 10),
+      );
+      final txRetiro = Transaction(
+        id: 'tx-ret',
+        clienteId: 'c1',
+        clienteNombre: 'Carlos Gómez',
+        tipo: TransactionType.retiro,
+        valor: 1500000.0,
+        fecha: DateTime(ahora.year, ahora.month, 5),
+      );
+
+      final txRepo = MockTransactionRepo([txRecarga, txRetiro]);
+      final clientRepo = MockClientRepo(testClients);
+
+      await tester.pumpWidget(
+        buildTestApp(
+          TransactionsScreen(
+            user: testUser,
+            getTransactionsUseCase: GetTransactionsUseCase(txRepo),
+            deleteTransactionUseCase: DeleteTransactionUseCase(txRepo),
+            getProfileUseCase: GetProfileUseCase(MockProfileRepo()),
+            getClientsUseCase: GetClientsUseCase(clientRepo),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Eliminar la recarga de $2.000.000 -> queda únicamente el retiro de $1.500.000 => saldo -$1.500.000
+      await tester.drag(find.byType(AppListCard).first, const Offset(-180, 0));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Eliminar'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Eliminar Transacción'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
+      await tester.pumpAndSettle();
+
+      expect(txRepo.items.length, equals(1));
+      expect(txRepo.items.single.id, equals('tx-ret'));
+      expect(
+        find.textContaining('Nuevo saldo de Carlos Gómez: - \$ 1.500.000,00 (saldo negativo)'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('Tocar el filtro "Desde" debe abrir el DatePickerDialog correctamente sin error de localizaciones', (tester) async {

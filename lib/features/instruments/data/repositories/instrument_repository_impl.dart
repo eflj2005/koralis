@@ -65,8 +65,14 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
 
         final rawShares = data['participaciones'] as List<dynamic>? ?? [];
         final participaciones = rawShares
-            .whereType<Map<String, dynamic>>()
-            .map((m) => InstrumentClientShare.fromMap(m))
+            .whereType<Map>()
+            .map((m) => InstrumentClientShare.fromMap(Map<String, dynamic>.from(m)))
+            .toList();
+
+        final rawAportes = data['aportes'] as List<dynamic>? ?? [];
+        final aportes = rawAportes
+            .whereType<Map>()
+            .map((m) => InstrumentContribution.fromMap(Map<String, dynamic>.from(m)))
             .toList();
 
         return Instrument(
@@ -85,6 +91,7 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
           estado: data['estado'] as String? ?? 'Activo',
           fechaCreacion: fechaCreacion,
           participaciones: participaciones,
+          aportes: aportes,
           userId: data['userId'] as String? ?? _userId ?? AppFirebase().currentUidSafe,
         );
       }).toList();
@@ -116,6 +123,7 @@ class InstrumentRepositoryImpl implements InstrumentRepository {
       'estado': instrument.estado,
       'fechaCreacion': instrument.fechaCreacion.millisecondsSinceEpoch,
       'participaciones': instrument.participaciones.map((p) => p.toMap()).toList(),
+      'aportes': instrument.aportes.map((a) => a.toMap()).toList(),
     };
 
     if (uidActual != null && uidActual.trim().isNotEmpty) {

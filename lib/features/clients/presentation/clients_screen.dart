@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:core/core.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
+import 'package:koralis_app/features/instruments/data/repositories/instrument_repository_impl.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
 import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:koralis_app/features/transactions/data/repositories/transaction_repository_impl.dart';
 import 'client_form_screen.dart';
 import '../domain/entities/client.dart';
 import '../domain/usecases/get_clients_usecase.dart';
 import '../domain/usecases/add_client_usecase.dart';
+import '../domain/usecases/delete_client_usecase.dart';
 import '../domain/repositories/client_repository.dart';
 import '../data/repositories/client_repository_impl.dart';
 
@@ -24,6 +27,7 @@ class ClientsScreen extends StatefulWidget {
   final User user;
   final GetClientsUseCase? getClientsUseCase;
   final AddClientUseCase? addClientUseCase;
+  final DeleteClientUseCase? deleteClientUseCase;
   final GetProfileUseCase? getProfileUseCase;
 
   const ClientsScreen({
@@ -31,6 +35,7 @@ class ClientsScreen extends StatefulWidget {
     required this.user,
     this.getClientsUseCase,
     this.addClientUseCase,
+    this.deleteClientUseCase,
     this.getProfileUseCase,
   });
 
@@ -42,6 +47,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
   static const double _anchoBarraBase = 58.0;
 
   late final GetClientsUseCase _getClientsUseCase;
+  DeleteClientUseCase? _deleteClientUseCase;
   late final GetProfileUseCase _getProfileUseCase;
 
   Future<List<Client>>? _clientesFuture;
@@ -56,12 +62,20 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
     _getClientsUseCase =
         widget.getClientsUseCase ?? GetClientsUseCase(obtenerRepositorio());
+    _deleteClientUseCase = widget.deleteClientUseCase;
     _getProfileUseCase =
         widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
 
     _cargarClientes();
     _profileFuture = _getProfileUseCase.execute(widget.user.id);
   }
+
+  DeleteClientUseCase _obtenerDeleteClientUseCase() =>
+      _deleteClientUseCase ??= DeleteClientUseCase(
+        clientRepository: ClientRepositoryImpl(userId: widget.user.id),
+        instrumentRepository: InstrumentRepositoryImpl(userId: widget.user.id),
+        transactionRepository: TransactionRepositoryImpl(userId: widget.user.id),
+      );
 
   /// Recarga la lista de clientes desde la fuente de datos
   void _cargarClientes() {
@@ -267,6 +281,70 @@ class _ClientsScreenState extends State<ClientsScreen> {
     }
   }
 
+  /// Solicita confirmación y elimina el cliente validando que no tenga registros asociados.
+  Future<void> _confirmarEliminarCliente(
+    BuildContext context,
+    Client cliente,
+  ) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: colorScheme.error,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Eliminar Cliente', overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        ),
+        content: Text(
+          '¿Estás seguro de eliminar a "${cliente.nombre}"? Esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true || !mounted) return;
+
+    try {
+      await _obtenerDeleteClientUseCase().execute(cliente);
+      if (!mounted) return;
+      _cargarClientes();
+      AppMessenger.showSuccessSnackBar(
+        this.context,
+        'Cliente "${cliente.nombre}" eliminado correctamente',
+      );
+    } on ClientDeletionBlockedException catch (e) {
+      if (!mounted) return;
+      AppMessenger.showInfoSnackBar(this.context, e.message);
+    } catch (e) {
+      if (!mounted) return;
+      AppMessenger.showErrorSnackBar(
+        this.context,
+        'No fue posible eliminar el cliente: $e',
+      );
+    }
+  }
+
   /// Construye los ítems de navegación lateral con "Clientes" activa
   List<AppFolderTabItem> _obtenerItemsPestanas(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -430,6 +508,23 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                       texto: cliente.estado,
                                       color: esActivo ? Colors.green : colorScheme.outline,
                                     ),
+                                    accionesSwipe: [
+                                      AppSwipeAction(
+                                        etiqueta: 'Editar',
+                                        icono: Icons.edit_outlined,
+                                        colorFondo: colorScheme.primary,
+                                        onTap: () => _navegarEditarCliente(context, cliente),
+                                      ),
+                                      AppSwipeAction(
+                                        etiqueta: 'Eliminar',
+                                        icono: Icons.delete_outline_rounded,
+                                        colorFondo: colorScheme.error,
+                                        onTap: () => _confirmarEliminarCliente(
+                                          context,
+                                          cliente,
+                                        ),
+                                      ),
+                                    ],
                                     onTap: () {
                                       // Al pulsar en un cliente, mostrar ficha rápida
                                       showAppModalBottomSheet(
@@ -513,15 +608,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                                   title: const Text('Observación'),
                                                   subtitle: Text(cliente.observacion),
                                                 ),
-                                              const SizedBox(height: 14),
-                                              AppButton(
-                                                texto: 'Editar Cliente',
-                                                icono: Icons.edit_outlined,
-                                                onPressed: () {
-                                                  Navigator.pop(context);
-                                                  _navegarEditarCliente(context, cliente);
-                                                },
-                                              ),
                                               const SizedBox(height: 8),
                                             ],
                                           ),

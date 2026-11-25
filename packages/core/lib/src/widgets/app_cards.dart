@@ -225,6 +225,32 @@ class AppHeaderBanner extends StatelessWidget {
   }
 }
 
+/// Modelo de acción revelada al deslizar horizontalmente una tarjeta [AppListCard].
+class AppSwipeAction {
+  /// Texto corto mostrado debajo del ícono (ej. "Editar", "Eliminar").
+  final String etiqueta;
+
+  /// Ícono representativo de la acción.
+  final IconData icono;
+
+  /// Color de fondo del botón de acción.
+  final Color colorFondo;
+
+  /// Color del ícono y de la etiqueta (por defecto blanco).
+  final Color colorContenido;
+
+  /// Callback ejecutado al presionar la acción.
+  final VoidCallback? onTap;
+
+  const AppSwipeAction({
+    required this.etiqueta,
+    required this.icono,
+    required this.colorFondo,
+    this.colorContenido = Colors.white,
+    this.onTap,
+  });
+}
+
 /// Tarjeta de bloque rectangular apilable diseñada específicamente para listados densos o estructurados.
 ///
 /// Conserva el diseño geométrico de bloques horizontales limpios con soporte para:
@@ -233,6 +259,7 @@ class AppHeaderBanner extends StatelessWidget {
 /// - Línea de contacto o detalle secundario.
 /// - Insignia o badge de estado a la derecha.
 /// - Indicador visual y evento `onTap`.
+/// - Acciones opcionales reveladas mediante desplazamiento horizontal (`accionesSwipe`).
 class AppListCard extends StatelessWidget {
   /// Título principal del elemento (ej. Nombre del cliente).
   final String titulo;
@@ -276,6 +303,9 @@ class AppListCard extends StatelessWidget {
   /// Widget complementario opcional que se muestra al pie de la columna textual (ej. Saldo Disponible).
   final Widget? pie;
 
+  /// Acciones opcionales que se revelan al deslizar la tarjeta de derecha a izquierda.
+  final List<AppSwipeAction>? accionesSwipe;
+
   const AppListCard({
     super.key,
     required this.titulo,
@@ -291,10 +321,39 @@ class AppListCard extends StatelessWidget {
     this.tituloMaxLines,
     this.fusionarSubtituloSiMultilinea = false,
     this.pie,
+    this.accionesSwipe,
   });
 
   @override
   Widget build(BuildContext context) {
+    final tieneSwipe = accionesSwipe != null && accionesSwipe!.isNotEmpty;
+    if (!tieneSwipe) {
+      return _buildTarjeta(
+        context,
+        margin: EdgeInsets.only(bottom: margenInferior),
+        onTapEfectivo: onTap,
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: margenInferior),
+      child: _SwipeableListCard(
+        acciones: accionesSwipe!,
+        onTapTarjeta: onTap,
+        builder: (onTapInterno) => _buildTarjeta(
+          context,
+          margin: EdgeInsets.zero,
+          onTapEfectivo: onTapInterno,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTarjeta(
+    BuildContext context, {
+    required EdgeInsetsGeometry margin,
+    required VoidCallback? onTapEfectivo,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final colorBase = colorAcento ?? colorScheme.primary;
@@ -302,7 +361,7 @@ class AppListCard extends StatelessWidget {
         (iconoAvatar != null || (textoAvatar != null && textoAvatar!.isNotEmpty));
 
     return Container(
-      margin: EdgeInsets.only(bottom: margenInferior),
+      margin: margin,
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
@@ -321,7 +380,7 @@ class AppListCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: onTapEfectivo,
           borderRadius: BorderRadius.circular(14),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
@@ -507,6 +566,158 @@ class AppListCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Contenedor interno con gesto horizontal para revelar botones de acción detrás de [AppListCard].
+class _SwipeableListCard extends StatefulWidget {
+  final List<AppSwipeAction> acciones;
+  final VoidCallback? onTapTarjeta;
+  final Widget Function(VoidCallback? onTapInterno) builder;
+
+  const _SwipeableListCard({
+    required this.acciones,
+    required this.onTapTarjeta,
+    required this.builder,
+  });
+
+  @override
+  State<_SwipeableListCard> createState() => _SwipeableListCardState();
+}
+
+class _SwipeableListCardState extends State<_SwipeableListCard>
+    with SingleTickerProviderStateMixin {
+  static const double _anchoAccion = 72.0;
+
+  late final AnimationController _controller;
+  Animation<double>? _animacion;
+  double _offset = 0.0;
+
+  double get _anchoTotal => widget.acciones.length * _anchoAccion;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    )..addListener(() {
+        if (_animacion != null) {
+          setState(() {
+            _offset = _animacion!.value;
+          });
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _animarHacia(double destino) {
+    _animacion = Tween<double>(begin: _offset, end: destino).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+    _controller
+      ..reset()
+      ..forward();
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (_controller.isAnimating) {
+      _controller.stop();
+    }
+    setState(() {
+      _offset = (_offset + details.delta.dx).clamp(-_anchoTotal, 0.0);
+    });
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0.0;
+    if (velocity < -250 || _offset.abs() > _anchoTotal * 0.35) {
+      _animarHacia(-_anchoTotal);
+    } else {
+      _animarHacia(0.0);
+    }
+  }
+
+  void _manejarTapTarjeta() {
+    if (_offset < -1.0) {
+      _animarHacia(0.0);
+      return;
+    }
+    widget.onTapTarjeta?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragUpdate: _onHorizontalDragUpdate,
+      onHorizontalDragEnd: _onHorizontalDragEnd,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          children: [
+            if (_offset < 0)
+              Positioned.fill(
+                child: Container(
+                  color: widget.acciones.last.colorFondo,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: widget.acciones.map((accion) {
+                      return SizedBox(
+                        width: _anchoAccion,
+                        child: Material(
+                          color: accion.colorFondo,
+                          child: InkWell(
+                            onTap: () {
+                              _animarHacia(0.0);
+                              accion.onTap?.call();
+                            },
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  accion.icono,
+                                  color: accion.colorContenido,
+                                  size: 20,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  accion.etiqueta,
+                                  style: TextStyle(
+                                    color: accion.colorContenido,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            Transform.translate(
+              offset: Offset(_offset, 0),
+              child: widget.builder(
+                widget.onTapTarjeta != null || _offset < -1.0
+                    ? _manejarTapTarjeta
+                    : null,
+              ),
+            ),
+          ],
         ),
       ),
     );

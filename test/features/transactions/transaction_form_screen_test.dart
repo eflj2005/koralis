@@ -37,6 +37,11 @@ class MockClientRepo implements ClientRepository {
   Future<void> addClient(Client client) async {
     clients.add(client);
   }
+
+  @override
+  Future<void> deleteClient(String id) async {
+    clients.removeWhere((c) => c.id == id);
+  }
 }
 
 class MockTransactionRepo implements TransactionRepository {

@@ -105,5 +105,47 @@ void main() {
       expect(instrumentos.length, equals(1));
       expect(instrumentos.first.id, equals('instExistenteAlfa99'));
     });
+
+    test('saveInstrument y getInstruments deben serializar y deserializar aportes correctamente', () async {
+      final fechaAporte = DateTime(2026, 5, 2, 9, 15);
+      final instrumentoConAportes = Instrument(
+        id: 'instConAportes1',
+        numero: 'CDT-AP-01',
+        entidad: 'Bancolombia',
+        fechaApertura: DateTime(2026, 5, 1),
+        dias: 90,
+        tasaIea: 11.0,
+        valorInvertido: 15000000,
+        rendimientoTProyec: 400000,
+        estado: 'Borrador',
+        aportes: [
+          InstrumentContribution(
+            clienteId: 'cli-1',
+            clienteNombre: 'Carlos Santana',
+            valor: 10000000,
+            fecha: fechaAporte,
+          ),
+          InstrumentContribution(
+            clienteId: 'cli-2',
+            clienteNombre: 'Mariana Pajón',
+            valor: 5000000,
+            fecha: fechaAporte,
+            transaccionId: 'inv_instConAportes1_cli-2',
+          ),
+        ],
+      );
+
+      await repository.saveInstrument(instrumentoConAportes);
+
+      final recuperados = await repository.getInstruments();
+      expect(recuperados.length, equals(1));
+      final inst = recuperados.first;
+      expect(inst.aportes.length, equals(2));
+      expect(inst.aportes[0].clienteId, equals('cli-1'));
+      expect(inst.aportes[0].valor, equals(10000000));
+      expect(inst.aportes[0].transaccionId, isNull);
+      expect(inst.aportes[1].clienteId, equals('cli-2'));
+      expect(inst.aportes[1].transaccionId, equals('inv_instConAportes1_cli-2'));
+    });
   });
 }

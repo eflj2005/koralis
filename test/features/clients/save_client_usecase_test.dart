@@ -24,6 +24,11 @@ class MockClientRepository implements ClientRepository {
       _clientes.add(client);
     }
   }
+
+  @override
+  Future<void> deleteClient(String id) async {
+    _clientes.removeWhere((c) => c.id == id);
+  }
 }
 
 void main() {

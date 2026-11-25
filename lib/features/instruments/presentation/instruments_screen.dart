@@ -5,9 +5,11 @@ import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_f
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
 import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:koralis_app/features/transactions/data/repositories/transaction_repository_impl.dart';
 import '../domain/entities/instrument.dart';
 import '../domain/usecases/get_instruments_usecase.dart';
 import '../domain/usecases/save_instrument_usecase.dart';
+import '../domain/usecases/delete_instrument_usecase.dart';
 import '../domain/repositories/instrument_repository.dart';
 import '../data/repositories/instrument_repository_impl.dart';
 import 'instrument_form_screen.dart';
@@ -17,6 +19,7 @@ class InstrumentsScreen extends StatefulWidget {
   final User user;
   final GetInstrumentsUseCase? getInstrumentsUseCase;
   final SaveInstrumentUseCase? saveInstrumentUseCase;
+  final DeleteInstrumentUseCase? deleteInstrumentUseCase;
   final GetProfileUseCase? getProfileUseCase;
 
   const InstrumentsScreen({
@@ -24,6 +27,7 @@ class InstrumentsScreen extends StatefulWidget {
     required this.user,
     this.getInstrumentsUseCase,
     this.saveInstrumentUseCase,
+    this.deleteInstrumentUseCase,
     this.getProfileUseCase,
   });
 
@@ -35,6 +39,7 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
   static const double _anchoBarraBase = 58.0;
 
   late final GetInstrumentsUseCase _getInstrumentsUseCase;
+  DeleteInstrumentUseCase? _deleteInstrumentUseCase;
   late final GetProfileUseCase _getProfileUseCase;
 
   Future<List<Instrument>>? _instrumentosFuture;
@@ -50,11 +55,18 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
     _getInstrumentsUseCase =
         widget.getInstrumentsUseCase ??
         GetInstrumentsUseCase(obtenerRepositorio());
+    _deleteInstrumentUseCase = widget.deleteInstrumentUseCase;
     _getProfileUseCase =
         widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
 
     _cargarDatos();
   }
+
+  DeleteInstrumentUseCase _obtenerDeleteInstrumentUseCase() =>
+      _deleteInstrumentUseCase ??= DeleteInstrumentUseCase(
+        instrumentRepository: InstrumentRepositoryImpl(userId: widget.user.id),
+        transactionRepository: TransactionRepositoryImpl(userId: widget.user.id),
+      );
 
   void _cargarDatos() {
     setState(() {
@@ -110,6 +122,73 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
 
     if (editado == true) {
       _cargarDatos();
+    }
+  }
+
+  /// Solicita confirmación y elimina el instrumento validando su estado y registros asociados.
+  Future<void> _confirmarEliminarInstrumento(
+    BuildContext context,
+    Instrument instrumento,
+  ) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: colorScheme.error,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Eliminar Instrumento',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          '¿Estás seguro de eliminar el instrumento "${instrumento.numero}" (${instrumento.entidad})? Esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true || !mounted) return;
+
+    try {
+      await _obtenerDeleteInstrumentUseCase().execute(instrumento);
+      if (!mounted) return;
+      _cargarDatos();
+      AppMessenger.showSuccessSnackBar(
+        this.context,
+        'Instrumento "${instrumento.numero}" eliminado correctamente',
+      );
+    } on InstrumentDeletionBlockedException catch (e) {
+      if (!mounted) return;
+      AppMessenger.showInfoSnackBar(this.context, e.message);
+    } catch (e) {
+      if (!mounted) return;
+      AppMessenger.showErrorSnackBar(
+        this.context,
+        'No fue posible eliminar el instrumento: $e',
+      );
     }
   }
 
@@ -418,15 +497,6 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                 title: const Text('Observación'),
                 subtitle: Text(instrumento.observacion),
               ),
-            const SizedBox(height: 14),
-            AppButton(
-              texto: 'Editar Instrumento',
-              icono: Icons.edit_outlined,
-              onPressed: () {
-                Navigator.pop(context);
-                _navegarEditarInstrumento(context, instrumento);
-              },
-            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -598,6 +668,27 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                                     ),
                                     onTap: () =>
                                         _mostrarFichaRapida(context, inst),
+                                    accionesSwipe: [
+                                      AppSwipeAction(
+                                        etiqueta: 'Editar',
+                                        icono: Icons.edit_outlined,
+                                        colorFondo: colorScheme.primary,
+                                        onTap: () => _navegarEditarInstrumento(
+                                          context,
+                                          inst,
+                                        ),
+                                      ),
+                                      AppSwipeAction(
+                                        etiqueta: 'Eliminar',
+                                        icono: Icons.delete_outline_rounded,
+                                        colorFondo: colorScheme.error,
+                                        onTap: () =>
+                                            _confirmarEliminarInstrumento(
+                                          context,
+                                          inst,
+                                        ),
+                                      ),
+                                    ],
                                   );
                                 },
                               );
