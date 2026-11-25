@@ -1,29 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
+import 'package:provider/provider.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
-import 'package:koralis_app/features/instruments/data/repositories/instrument_repository_impl.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
-import 'package:koralis_app/features/transactions/data/repositories/transaction_repository_impl.dart';
+import 'package:koralis_app/features/profile/presentation/viewmodels/profile_view_model.dart';
 import 'client_form_screen.dart';
 import '../domain/entities/client.dart';
 import '../domain/usecases/get_clients_usecase.dart';
 import '../domain/usecases/add_client_usecase.dart';
 import '../domain/usecases/delete_client_usecase.dart';
-import '../domain/repositories/client_repository.dart';
-import '../data/repositories/client_repository_impl.dart';
+import 'viewmodels/clients_view_model.dart';
 
-/// Pantalla principal del Módulo de Clientes.
+/// Pantalla principal del Módulo de Clientes (arquitectura MVVM con `provider`).
 ///
 /// Integra:
 /// - Barra lateral continua compacta de 58 px con esfera de perfil superior.
 /// - Pestaña "Clientes" seleccionada como activa en el menú de carpetas.
-/// - Banner rectangular superior de encabezado ("Clientes").
-/// - Listado de bloques rectangulares apilados ordenados alfabéticamente de la A a la Z.
-/// - Botón flotante inferior (+) para crear y registrar nuevos clientes en Cloud Firestore.
-class ClientsScreen extends StatefulWidget {
+/// - Encabezado tipográfico ("Clientes").
+/// - Listado de tarjetas [AppListCard] ordenadas alfabéticamente de la A a la Z con swipe.
+/// - Botón flotante inferior (+) para crear y registrar nuevos clientes.
+class ClientsScreen extends StatelessWidget {
   final User user;
   final GetClientsUseCase? getClientsUseCase;
   final AddClientUseCase? addClientUseCase;
@@ -39,48 +37,65 @@ class ClientsScreen extends StatefulWidget {
     this.getProfileUseCase,
   });
 
+  bool _tieneProvider<T>(BuildContext context) {
+    try {
+      Provider.of<T>(context, listen: false);
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
+  }
+
   @override
-  State<ClientsScreen> createState() => _ClientsScreenState();
+  Widget build(BuildContext context) {
+    final tieneClientsVm = _tieneProvider<ClientsViewModel>(context);
+    final tieneProfileVm = _tieneProvider<ProfileViewModel>(context);
+
+    if (tieneClientsVm && tieneProfileVm) {
+      return _ClientsView(user: user);
+    }
+
+    return MultiProvider(
+      providers: [
+        if (!tieneClientsVm)
+          ChangeNotifierProvider<ClientsViewModel>(
+            create: (_) => ClientsViewModel(
+              userId: user.id,
+              getClientsUseCase: getClientsUseCase,
+              deleteClientUseCase: deleteClientUseCase,
+            ),
+          ),
+        if (!tieneProfileVm)
+          ChangeNotifierProvider<ProfileViewModel>(
+            create: (_) => ProfileViewModel(
+              getProfileUseCase: getProfileUseCase,
+            ),
+          ),
+      ],
+      child: _ClientsView(user: user),
+    );
+  }
 }
 
-class _ClientsScreenState extends State<ClientsScreen> {
+class _ClientsView extends StatefulWidget {
+  final User user;
+
+  const _ClientsView({required this.user});
+
+  @override
+  State<_ClientsView> createState() => _ClientsViewState();
+}
+
+class _ClientsViewState extends State<_ClientsView> {
   static const double _anchoBarraBase = 58.0;
-
-  late final GetClientsUseCase _getClientsUseCase;
-  DeleteClientUseCase? _deleteClientUseCase;
-  late final GetProfileUseCase _getProfileUseCase;
-
-  Future<List<Client>>? _clientesFuture;
-  Future<Profile>? _profileFuture;
 
   @override
   void initState() {
     super.initState();
-    ClientRepository? repositorio;
-    ClientRepository obtenerRepositorio() =>
-        repositorio ??= ClientRepositoryImpl(userId: widget.user.id);
-
-    _getClientsUseCase =
-        widget.getClientsUseCase ?? GetClientsUseCase(obtenerRepositorio());
-    _deleteClientUseCase = widget.deleteClientUseCase;
-    _getProfileUseCase =
-        widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
-
-    _cargarClientes();
-    _profileFuture = _getProfileUseCase.execute(widget.user.id);
-  }
-
-  DeleteClientUseCase _obtenerDeleteClientUseCase() =>
-      _deleteClientUseCase ??= DeleteClientUseCase(
-        clientRepository: ClientRepositoryImpl(userId: widget.user.id),
-        instrumentRepository: InstrumentRepositoryImpl(userId: widget.user.id),
-        transactionRepository: TransactionRepositoryImpl(userId: widget.user.id),
-      );
-
-  /// Recarga la lista de clientes desde la fuente de datos
-  void _cargarClientes() {
-    setState(() {
-      _clientesFuture = _getClientsUseCase.execute();
+    Future.microtask(() {
+      if (!mounted) return;
+      context.read<ClientsViewModel>().cargarClientes();
+      context.read<ProfileViewModel>().cargarPerfil(widget.user.id);
     });
   }
 
@@ -133,7 +148,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 8),
-
             ListTile(
               leading: Icon(
                 Icons.person_outline_rounded,
@@ -161,7 +175,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 Navigator.pushNamed(context, '/profile', arguments: perfilNavegar);
               },
             ),
-
             ListTile(
               leading: Icon(
                 Icons.lock_reset_rounded,
@@ -184,7 +197,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 );
               },
             ),
-
             ListTile(
               leading: Icon(
                 Icons.logout_rounded,
@@ -244,6 +256,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
               ),
               onPressed: () {
                 Navigator.pop(dialogContext);
+                context.read<ProfileViewModel>().limpiar();
                 Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
               },
               child: const Text('Salir'),
@@ -261,8 +274,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
       '/client_form',
       arguments: ClientFormArgs(user: widget.user),
     );
-    if (recargar == true) {
-      _cargarClientes();
+    if (recargar == true && context.mounted) {
+      context.read<ClientsViewModel>().cargarClientes();
     }
   }
 
@@ -276,8 +289,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
         client: cliente,
       ),
     );
-    if (recargar == true) {
-      _cargarClientes();
+    if (recargar == true && context.mounted) {
+      context.read<ClientsViewModel>().cargarClientes();
     }
   }
 
@@ -326,9 +339,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
     if (confirmar != true || !mounted) return;
 
     try {
-      await _obtenerDeleteClientUseCase().execute(cliente);
+      await this.context.read<ClientsViewModel>().eliminarCliente(cliente);
       if (!mounted) return;
-      _cargarClientes();
       AppMessenger.showSuccessSnackBar(
         this.context,
         'Cliente "${cliente.nombre}" eliminado correctamente',
@@ -355,9 +367,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
         titulo: 'Clientes',
         icono: Icons.people_alt_outlined,
         colorAcento: colorScheme.secondary,
-        onTap: () {
-          // Ya nos encontramos en la pantalla de Clientes
-        },
+        onTap: () {},
       ),
       AppFolderTabItem(
         indice: 1,
@@ -401,16 +411,18 @@ class _ClientsScreenState extends State<ClientsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final vm = context.watch<ClientsViewModel>();
+    final profileVm = context.watch<ProfileViewModel>();
+    final profile = profileVm.profile;
+    final imageProvider = profile?.avatarPath != null
+        ? AssetImage(profile!.avatarPath) as ImageProvider
+        : const AssetImage('images/avatar.png');
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Stack(
           children: [
-            // ===============================================================
-            // 1. CAPA DE CONTENIDO: LISTA DE CLIENTES Y ENCABEZADO
-            // Separado por 58 px de la izquierda para respetar la barra lateral
-            // ===============================================================
             Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -421,203 +433,22 @@ class _ClientsScreenState extends State<ClientsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // --- Encabezado Superior Tipográfico Limpio y Elegante ---
                         AppHeaderTitle(
                           titulo: 'Clientes',
                           onBack: () => Navigator.pop(context),
                           accion: IconButton(
                             icon: const Icon(Icons.refresh_rounded),
                             tooltip: 'Actualizar lista',
-                            onPressed: _cargarClientes,
+                            onPressed: () =>
+                                context.read<ClientsViewModel>().cargarClientes(),
                           ),
                         ),
-
-                        // --- Listado Asíncrono de Clientes ---
                         Expanded(
-                          child: FutureBuilder<List<Client>>(
-                            future: _clientesFuture,
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState == ConnectionState.waiting) {
-                                return const Center(child: LoadingWidget());
-                              }
-
-                              if (snapshot.hasError) {
-                                return Center(
-                                  child: EmptyWidget(
-                                    icono: Icons.error_outline_rounded,
-                                    titulo: 'Error al consultar clientes',
-                                    descripcion: '${snapshot.error}',
-                                  ),
-                                );
-                              }
-
-                              final clientes = snapshot.data ?? [];
-
-                              if (clientes.isEmpty) {
-                                return const Center(
-                                  child: EmptyWidget(
-                                    icono: Icons.people_outline_rounded,
-                                    titulo: 'Aún no tienes clientes registrados',
-                                    descripcion:
-                                        'Presiona el botón (+) en la esquina inferior para registrar tu primer cliente.',
-                                  ),
-                                );
-                              }
-
-                              return ListView.builder(
-                                physics: const BouncingScrollPhysics(),
-                                padding: const EdgeInsets.only(bottom: 80.0),
-                                itemCount: clientes.length,
-                                itemBuilder: (context, index) {
-                                  final cliente = clientes[index];
-                                  final bool esActivo = cliente.estado.toLowerCase() == 'activo';
-
-                                  return AppListCard(
-                                    titulo: cliente.nombre,
-                                    subtitulo: cliente.documento,
-                                    detalle: cliente.correo.isNotEmpty
-                                        ? '${cliente.correo} • ${cliente.telefono}'
-                                        : cliente.telefono,
-                                    colorAcento: colorScheme.secondary,
-                                    fusionarSubtituloSiMultilinea: true,
-                                    pie: Align(
-                                      alignment: Alignment.centerRight,
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            'Disponible: ',
-                                            style: theme.textTheme.bodySmall?.copyWith(
-                                              color: colorScheme.onSurfaceVariant,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                          Text(
-                                            '\$0',
-                                            style: theme.textTheme.titleMedium?.copyWith(
-                                              color: colorScheme.primary,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 15,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    badge: AppBadge(
-                                      texto: cliente.estado,
-                                      color: esActivo ? Colors.green : colorScheme.outline,
-                                    ),
-                                    accionesSwipe: [
-                                      AppSwipeAction(
-                                        etiqueta: 'Editar',
-                                        icono: Icons.edit_outlined,
-                                        colorFondo: colorScheme.primary,
-                                        onTap: () => _navegarEditarCliente(context, cliente),
-                                      ),
-                                      AppSwipeAction(
-                                        etiqueta: 'Eliminar',
-                                        icono: Icons.delete_outline_rounded,
-                                        colorFondo: colorScheme.error,
-                                        onTap: () => _confirmarEliminarCliente(
-                                          context,
-                                          cliente,
-                                        ),
-                                      ),
-                                    ],
-                                    onTap: () {
-                                      // Al pulsar en un cliente, mostrar ficha rápida
-                                      showAppModalBottomSheet(
-                                        context,
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Text(
-                                                          cliente.nombre,
-                                                          style: theme.textTheme.titleMedium
-                                                              ?.copyWith(
-                                                            fontWeight: FontWeight.bold,
-                                                          ),
-                                                        ),
-                                                        Text(
-                                                          cliente.documento,
-                                                          style: theme.textTheme.bodySmall?.copyWith(
-                                                            color: colorScheme.onSurfaceVariant,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  AppBadge(
-                                                    texto: cliente.estado,
-                                                    color: esActivo ? Colors.green : Colors.grey,
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 16),
-                                              const Divider(),
-                                              const SizedBox(height: 8),
-                                              ListTile(
-                                                dense: true,
-                                                leading: const Icon(Icons.badge_outlined),
-                                                title: const Text('Identificación'),
-                                                subtitle: Text(cliente.documento),
-                                              ),
-                                              ListTile(
-                                                dense: true,
-                                                leading: const Icon(Icons.email_outlined),
-                                                title: const Text('Correo Electrónico'),
-                                                subtitle: Text(cliente.correo.isNotEmpty
-                                                    ? cliente.correo
-                                                    : 'No registrado'),
-                                              ),
-                                              ListTile(
-                                                dense: true,
-                                                leading: const Icon(Icons.phone_outlined),
-                                                title: const Text('Teléfono'),
-                                                subtitle: Text(cliente.telefono.isNotEmpty
-                                                    ? cliente.telefono
-                                                    : 'No registrado'),
-                                              ),
-                                              ListTile(
-                                                dense: true,
-                                                leading: const Icon(Icons.account_balance_wallet_outlined),
-                                                title: const Text('Disponible'),
-                                                subtitle: Text(
-                                                  '\$0',
-                                                  style: TextStyle(
-                                                    color: colorScheme.primary,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 15,
-                                                  ),
-                                                ),
-                                              ),
-                                              if (cliente.observacion.isNotEmpty)
-                                                ListTile(
-                                                  dense: true,
-                                                  leading: const Icon(Icons.notes_rounded),
-                                                  title: const Text('Observación'),
-                                                  subtitle: Text(cliente.observacion),
-                                                ),
-                                              const SizedBox(height: 8),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  );
-                                },
-                              );
-                            },
+                          child: _buildContenidoLista(
+                            context,
+                            vm: vm,
+                            theme: theme,
+                            colorScheme: colorScheme,
                           ),
                         ),
                       ],
@@ -626,26 +457,11 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 ),
               ],
             ),
-
-            // ===============================================================
-            // 2. NAVEGACIÓN LATERAL MODULAR DEL CORE (AppSidebarNavigation)
-            // Barra continua con solapa activa en "Clientes" e insignia flotante
-            // ===============================================================
             AppSidebarNavigation(
               anchoBarra: _anchoBarraBase,
-              insigniaFlotante: FutureBuilder<Profile>(
-                future: _profileFuture,
-                builder: (context, snapshot) {
-                  final profile = snapshot.data;
-                  final imageProvider = profile?.avatarPath != null
-                      ? AssetImage(profile!.avatarPath) as ImageProvider
-                      : const AssetImage('images/avatar.png');
-
-                  return AppFloatingProfileBadge(
-                    proveedorImagen: imageProvider,
-                    onTap: () => _mostrarMenuPerfil(context, profile),
-                  );
-                },
+              insigniaFlotante: AppFloatingProfileBadge(
+                proveedorImagen: imageProvider,
+                onTap: () => _mostrarMenuPerfil(context, profile),
               ),
               seccionPestanas: AppFolderTabBar(
                 items: _obtenerItemsPestanas(context),
@@ -667,6 +483,192 @@ class _ClientsScreenState extends State<ClientsScreen> {
         mensajeTooltip: 'Crear nuevo cliente',
         onPressed: () => _navegarCrearCliente(context),
       ),
+    );
+  }
+
+  Widget _buildContenidoLista(
+    BuildContext context, {
+    required ClientsViewModel vm,
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+  }) {
+    if (vm.isLoading && vm.clientes.isEmpty) {
+      return const Center(child: LoadingWidget());
+    }
+
+    if (vm.errorMessage != null && vm.clientes.isEmpty) {
+      return Center(
+        child: EmptyWidget(
+          icono: Icons.error_outline_rounded,
+          titulo: 'Error al consultar clientes',
+          descripcion: vm.errorMessage!,
+        ),
+      );
+    }
+
+    final clientes = vm.clientes;
+    if (clientes.isEmpty) {
+      return const Center(
+        child: EmptyWidget(
+          icono: Icons.people_outline_rounded,
+          titulo: 'Aún no tienes clientes registrados',
+          descripcion:
+              'Presiona el botón (+) en la esquina inferior para registrar tu primer cliente.',
+        ),
+      );
+    }
+
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 80.0),
+      itemCount: clientes.length,
+      itemBuilder: (context, index) {
+        final cliente = clientes[index];
+        final bool esActivo = cliente.estado.toLowerCase() == 'activo';
+
+        return AppListCard(
+          titulo: cliente.nombre,
+          subtitulo: cliente.documento,
+          detalle: cliente.correo.isNotEmpty
+              ? '${cliente.correo} • ${cliente.telefono}'
+              : cliente.telefono,
+          colorAcento: colorScheme.secondary,
+          fusionarSubtituloSiMultilinea: true,
+          pie: Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Disponible: ',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  '\$0',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          badge: AppBadge(
+            texto: cliente.estado,
+            color: esActivo ? Colors.green : colorScheme.outline,
+          ),
+          accionesSwipe: [
+            AppSwipeAction(
+              etiqueta: 'Editar',
+              icono: Icons.edit_outlined,
+              colorFondo: colorScheme.primary,
+              onTap: () => _navegarEditarCliente(context, cliente),
+            ),
+            AppSwipeAction(
+              etiqueta: 'Eliminar',
+              icono: Icons.delete_outline_rounded,
+              colorFondo: colorScheme.error,
+              onTap: () => _confirmarEliminarCliente(context, cliente),
+            ),
+          ],
+          onTap: () {
+            showAppModalBottomSheet(
+              context,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                cliente.nombre,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                cliente.documento,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        AppBadge(
+                          texto: cliente.estado,
+                          color: esActivo ? Colors.green : Colors.grey,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.badge_outlined),
+                      title: const Text('Identificación'),
+                      subtitle: Text(cliente.documento),
+                    ),
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.email_outlined),
+                      title: const Text('Correo Electrónico'),
+                      subtitle: Text(
+                        cliente.correo.isNotEmpty
+                            ? cliente.correo
+                            : 'No registrado',
+                      ),
+                    ),
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.phone_outlined),
+                      title: const Text('Teléfono'),
+                      subtitle: Text(
+                        cliente.telefono.isNotEmpty
+                            ? cliente.telefono
+                            : 'No registrado',
+                      ),
+                    ),
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.account_balance_wallet_outlined),
+                      title: const Text('Disponible'),
+                      subtitle: Text(
+                        '\$0',
+                        style: TextStyle(
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    if (cliente.observacion.isNotEmpty)
+                      ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.notes_rounded),
+                        title: const Text('Observación'),
+                        subtitle: Text(cliente.observacion),
+                      ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

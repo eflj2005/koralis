@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:koralis_app/features/auth/presentation/login_screen.dart';
 import 'package:koralis_app/features/auth/presentation/sign_up_screen.dart';
 import 'package:koralis_app/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:koralis_app/features/profile/presentation/profile_screen.dart';
 import 'package:koralis_app/features/clients/presentation/clients_screen.dart';
 import 'package:koralis_app/features/clients/presentation/client_form_screen.dart';
+import 'package:koralis_app/features/clients/presentation/viewmodels/clients_view_model.dart';
+import 'package:koralis_app/features/clients/presentation/viewmodels/client_form_view_model.dart';
 import 'package:koralis_app/features/instruments/presentation/instruments_screen.dart';
 import 'package:koralis_app/features/instruments/presentation/instrument_form_screen.dart';
 import 'package:koralis_app/features/transactions/presentation/transactions_screen.dart';
@@ -26,20 +29,34 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => DashboardScreen(user: user));
       case '/clients':
         final user = settings.arguments as User;
-        return MaterialPageRoute(builder: (_) => ClientsScreen(user: user));
+        return MaterialPageRoute(
+          builder: (_) => ChangeNotifierProvider<ClientsViewModel>(
+            create: (_) => ClientsViewModel(userId: user.id),
+            child: ClientsScreen(user: user),
+          ),
+        );
       case '/client_form':
         if (settings.arguments is ClientFormArgs) {
           final args = settings.arguments as ClientFormArgs;
           return MaterialPageRoute(
-            builder: (_) => ClientFormScreen(
-              user: args.user,
-              client: args.client,
+            builder: (_) => ChangeNotifierProvider<ClientFormViewModel>(
+              create: (_) => ClientFormViewModel(
+                userId: args.user.id,
+                clientInicial: args.client,
+              ),
+              child: ClientFormScreen(
+                user: args.user,
+                client: args.client,
+              ),
             ),
           );
         } else if (settings.arguments is User) {
           final user = settings.arguments as User;
           return MaterialPageRoute(
-            builder: (_) => ClientFormScreen(user: user),
+            builder: (_) => ChangeNotifierProvider<ClientFormViewModel>(
+              create: (_) => ClientFormViewModel(userId: user.id),
+              child: ClientFormScreen(user: user),
+            ),
           );
         }
         return MaterialPageRoute(builder: (_) => const LoginScreen());

@@ -7,6 +7,32 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ---
 
+## [2.2.0] — 2026-11-25
+
+### Added
+- **Aportes diferidos en Instrumentos Financieros:**
+  - Nueva entidad `InstrumentContribution` y campo `aportes` en `Instrument` con persistencia en Cloud Firestore.
+  - Nuevo caso de uso `ProcessInstrumentSaveUseCase` para generar transacciones automáticas de inversión solo al guardar en estado `Activo` (con re-validación de saldo disponible, idempotencia y rollback defensivo) y reversarlas automáticamente al volver de `Activo` a `Borrador`.
+- **Gesto pan/swipe reutilizable en listas (`core`):**
+  - Nuevo modelo `AppSwipeAction` y propiedad `accionesSwipe` en `AppListCard` para revelar acciones **Editar** y **Eliminar** al deslizar horizontalmente de derecha a izquierda.
+- **Procesos de eliminación con integridad referencial:**
+  - `deleteClient` en `ClientRepository` y `DeleteClientUseCase` (bloquea eliminación si el cliente tiene instrumentos o transacciones asociadas).
+  - `DeleteInstrumentUseCase` (permite eliminar solo instrumentos en estado `Borrador` sin aportes ni transacciones asociadas).
+  - Eliminación de transacciones manuales (`Recarga` y `Retiro`) en `TransactionsScreen` con confirmación y notificación del nuevo saldo disponible del cliente (incluso si resulta negativo).
+- **Pruebas unitarias y de interfaz:**
+  - Nuevas suites `process_instrument_save_usecase_test.dart`, `delete_client_usecase_test.dart` y `delete_instrument_usecase_test.dart`, además de pruebas de swipe, eliminación y `DatePickerDialog` localizado en clientes, instrumentos y transacciones.
+
+### Changed
+- `InstrumentFormScreen`: el registro, edición y eliminación de aportes en `Borrador` se persiste directamente en el documento del instrumento sin descontar saldo del cliente hasta la activación.
+- `ClientsScreen`, `InstrumentsScreen` y `TransactionsScreen`: la acción de editar se trasladó al botón **Editar** del gesto swipe (solo en transacciones manuales para `TransactionsScreen`) y se retiró el botón de editar de las fichas informativas.
+- Documentación actualizada en `docs/features/instruments.md` y `docs/core/catalogo_widgets.md`.
+
+### Fixed
+- **Localización de campos de fecha (`DatePicker`):** integración de `flutter_localizations` en `pubspec.yaml` y configuración de `localizationsDelegates` y `supportedLocales` en `lib/main.dart`, corrigiendo errores de localización al abrir selectores de fecha en transacciones.
+- **Configuración de compilación Android (Gradle):** ajustes en `android/app/build.gradle.kts`, `android/gradle.properties` y `.vscode/settings.json` para resolver error de build en Gradle.
+
+---
+
 ## [2.1.0] — 2026-10-02
 
 ### Added

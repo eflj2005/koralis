@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
+import 'package:provider/provider.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:koralis_app/features/profile/presentation/viewmodels/profile_view_model.dart';
 import '../domain/entities/client.dart';
 import '../domain/usecases/save_client_usecase.dart';
-import '../domain/repositories/client_repository.dart';
-import '../data/repositories/client_repository_impl.dart';
+import 'viewmodels/client_form_view_model.dart';
 
 /// Argumentos para la navegación hacia la pantalla de formulario de cliente.
 class ClientFormArgs {
@@ -21,15 +21,8 @@ class ClientFormArgs {
   });
 }
 
-/// Pantalla independiente para la creación y edición de clientes en el ecosistema Koralis.
-///
-/// Dispone de dos modos de operación:
-/// 1. Modo Creación: Si [client] es nulo, inicializa un formulario limpio.
-/// 2. Modo Edición: Si [client] es provisto, precarga la información y permite actualizarla.
-///
-/// Integra la barra lateral compacta (58 px) con solapa Clientes activa, encabezado tipográfico limpio
-/// y controles de formulario desacoplados utilizando exclusivamente componentes del core.
-class ClientFormScreen extends StatefulWidget {
+/// Pantalla independiente para la creación y edición de clientes (arquitectura MVVM con `provider`).
+class ClientFormScreen extends StatelessWidget {
   final User user;
   final Client? client;
   final SaveClientUseCase? saveClientUseCase;
@@ -43,11 +36,60 @@ class ClientFormScreen extends StatefulWidget {
     this.getProfileUseCase,
   });
 
+  bool _tieneProvider<T>(BuildContext context) {
+    try {
+      Provider.of<T>(context, listen: false);
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
+  }
+
   @override
-  State<ClientFormScreen> createState() => _ClientFormScreenState();
+  Widget build(BuildContext context) {
+    final tieneFormVm = _tieneProvider<ClientFormViewModel>(context);
+    final tieneProfileVm = _tieneProvider<ProfileViewModel>(context);
+
+    if (tieneFormVm && tieneProfileVm) {
+      return _ClientFormView(user: user, client: client);
+    }
+
+    return MultiProvider(
+      providers: [
+        if (!tieneFormVm)
+          ChangeNotifierProvider<ClientFormViewModel>(
+            create: (_) => ClientFormViewModel(
+              userId: user.id,
+              clientInicial: client,
+              saveClientUseCase: saveClientUseCase,
+            ),
+          ),
+        if (!tieneProfileVm)
+          ChangeNotifierProvider<ProfileViewModel>(
+            create: (_) => ProfileViewModel(
+              getProfileUseCase: getProfileUseCase,
+            ),
+          ),
+      ],
+      child: _ClientFormView(user: user, client: client),
+    );
+  }
 }
 
-class _ClientFormScreenState extends State<ClientFormScreen> {
+class _ClientFormView extends StatefulWidget {
+  final User user;
+  final Client? client;
+
+  const _ClientFormView({
+    required this.user,
+    this.client,
+  });
+
+  @override
+  State<_ClientFormView> createState() => _ClientFormViewState();
+}
+
+class _ClientFormViewState extends State<_ClientFormView> {
   static const double _anchoBarraBase = 58.0;
 
   final _formKey = GlobalKey<FormState>();
@@ -58,34 +100,21 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   late final TextEditingController _telefonoCtrl;
   late final TextEditingController _observacionCtrl;
 
-  late String _estadoSeleccionado;
-  bool _guardando = false;
-
-  late final SaveClientUseCase _saveClientUseCase;
-  late final GetProfileUseCase _getProfileUseCase;
-  Future<Profile>? _profileFuture;
-
-  bool get _esEdicion => widget.client != null;
-
   @override
   void initState() {
     super.initState();
-    ClientRepository? repo;
-    ClientRepository obtenerRepositorio() =>
-        repo ??= ClientRepositoryImpl(userId: widget.user.id);
-
-    _saveClientUseCase = widget.saveClientUseCase ?? SaveClientUseCase(obtenerRepositorio());
-    _getProfileUseCase = widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
-
     final clienteActual = widget.client;
     _nombreCtrl = TextEditingController(text: clienteActual?.nombre ?? '');
     _documentoCtrl = TextEditingController(text: clienteActual?.documento ?? '');
     _correoCtrl = TextEditingController(text: clienteActual?.correo ?? '');
     _telefonoCtrl = TextEditingController(text: clienteActual?.telefono ?? '');
-    _observacionCtrl = TextEditingController(text: clienteActual?.observacion ?? '');
-    _estadoSeleccionado = clienteActual?.estado ?? 'Activo';
+    _observacionCtrl =
+        TextEditingController(text: clienteActual?.observacion ?? '');
 
-    _profileFuture = _getProfileUseCase.execute(widget.user.id);
+    Future.microtask(() {
+      if (!mounted) return;
+      context.read<ProfileViewModel>().cargarPerfil(widget.user.id);
+    });
   }
 
   @override
@@ -98,43 +127,30 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
     super.dispose();
   }
 
-  /// Guarda o actualiza el cliente aplicando validación de formulario
+  /// Guarda o actualiza el cliente delegando la lógica al [ClientFormViewModel].
   Future<void> _guardarCliente() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _guardando = true);
-
-    // Si es edición conserva el ID existente, si es nuevo se envía vacío para que
-    // la capa de datos asigne el identificador alfanumérico nativo de Cloud Firestore.
-    final id = widget.client?.id ?? '';
-    final fechaCreacion = widget.client?.fechaCreacion ?? DateTime.now();
-
-    final clienteAguardar = Client(
-      id: id,
-      nombre: _nombreCtrl.text.trim(),
-      documento: _documentoCtrl.text.trim(),
-      correo: _correoCtrl.text.trim(),
-      telefono: _telefonoCtrl.text.trim(),
-      observacion: _observacionCtrl.text.trim(),
-      estado: _estadoSeleccionado,
-      fechaCreacion: fechaCreacion,
-      userId: widget.user.id,
-    );
-
+    final vm = context.read<ClientFormViewModel>();
     try {
-      await _saveClientUseCase.execute(clienteAguardar);
+      final clienteGuardado = await vm.guardarCliente(
+        nombre: _nombreCtrl.text,
+        documento: _documentoCtrl.text,
+        correo: _correoCtrl.text,
+        telefono: _telefonoCtrl.text,
+        observacion: _observacionCtrl.text,
+      );
       if (mounted) {
         AppMessenger.showSuccessSnackBar(
           context,
-          _esEdicion
-              ? 'Cliente "${clienteAguardar.nombre}" actualizado correctamente'
-              : 'Cliente "${clienteAguardar.nombre}" creado exitosamente',
+          vm.esEdicion
+              ? 'Cliente "${clienteGuardado.nombre}" actualizado correctamente'
+              : 'Cliente "${clienteGuardado.nombre}" creado exitosamente',
         );
         Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _guardando = false);
         AppMessenger.showErrorSnackBar(
           context,
           'No fue posible guardar el cliente: $e',
@@ -257,6 +273,7 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
               ),
               onPressed: () {
                 Navigator.pop(dialogContext);
+                context.read<ProfileViewModel>().limpiar();
                 Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
               },
               child: const Text('Salir'),
@@ -321,16 +338,18 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final vm = context.watch<ClientFormViewModel>();
+    final profileVm = context.watch<ProfileViewModel>();
+    final profile = profileVm.profile;
+    final imageProvider = profile?.avatarPath != null
+        ? AssetImage(profile!.avatarPath) as ImageProvider
+        : null;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Stack(
           children: [
-            // ===============================================================
-            // 1. CAPA DE CONTENIDO: FORMULARIO INDEPENDIENTE
-            // Desplazado 58 px de la izquierda para dar lugar al menú lateral
-            // ===============================================================
             Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -341,13 +360,10 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // --- Encabezado Tipográfico Limpio ---
                         AppHeaderTitle(
-                          titulo: _esEdicion ? 'Editar Cliente' : 'Nuevo Cliente',
+                          titulo: vm.esEdicion ? 'Editar Cliente' : 'Nuevo Cliente',
                           onBack: () => Navigator.pop(context),
                         ),
-
-                        // --- Formulario con Scroll ---
                         Expanded(
                           child: SingleChildScrollView(
                             physics: const BouncingScrollPhysics(),
@@ -357,7 +373,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  // Campo Nombre Completo
                                   AppTextField(
                                     controller: _nombreCtrl,
                                     label: 'Nombre completo o Razón Social',
@@ -371,8 +386,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                     },
                                   ),
                                   const SizedBox(height: 14),
-
-                                  // Campo Documento / Identificación
                                   AppTextField(
                                     controller: _documentoCtrl,
                                     label: 'Documento o Identificación',
@@ -386,8 +399,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                     },
                                   ),
                                   const SizedBox(height: 14),
-
-                                  // Campo Correo Electrónico
                                   AppTextField(
                                     controller: _correoCtrl,
                                     label: 'Correo Electrónico',
@@ -396,8 +407,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                     tipoTeclado: TextInputType.emailAddress,
                                   ),
                                   const SizedBox(height: 14),
-
-                                  // Campo Teléfono
                                   AppTextField(
                                     controller: _telefonoCtrl,
                                     label: 'Teléfono de Contacto',
@@ -406,27 +415,25 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                     tipoTeclado: TextInputType.phone,
                                   ),
                                   const SizedBox(height: 14),
-
-                                  // Campo Observación
                                   AppTextField(
                                     controller: _observacionCtrl,
                                     label: 'Observación',
-                                    hint: 'Notas o comentarios sobre el cliente o la negociación...',
+                                    hint:
+                                        'Notas o comentarios sobre el cliente o la negociación...',
                                     icono: Icons.notes_rounded,
                                     tipoTeclado: TextInputType.multiline,
                                     minLines: 2,
                                     maxLines: 2,
                                   ),
                                   const SizedBox(height: 14),
-
-                                  // Selector de Estado (Activo / Inactivo)
                                   Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
                                       color: colorScheme.surface,
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
-                                        color: colorScheme.outline.withValues(alpha: 0.3),
+                                        color:
+                                            colorScheme.outline.withValues(alpha: 0.3),
                                       ),
                                     ),
                                     child: Column(
@@ -443,7 +450,8 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                             Expanded(
                                               child: Text(
                                                 'Estado Operativo',
-                                                style: theme.textTheme.bodyMedium?.copyWith(
+                                                style: theme.textTheme.bodyMedium
+                                                    ?.copyWith(
                                                   fontWeight: FontWeight.w600,
                                                 ),
                                                 overflow: TextOverflow.ellipsis,
@@ -456,18 +464,31 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                           children: [
                                             Expanded(
                                               child: InkWell(
-                                                onTap: () => setState(() => _estadoSeleccionado = 'Activo'),
-                                                borderRadius: BorderRadius.circular(8),
+                                                onTap: () =>
+                                                    vm.seleccionarEstado('Activo'),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
                                                 child: AnimatedContainer(
-                                                  duration: const Duration(milliseconds: 150),
-                                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                                  duration: const Duration(
+                                                    milliseconds: 150,
+                                                  ),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                    vertical: 8,
+                                                  ),
                                                   decoration: BoxDecoration(
-                                                    color: _estadoSeleccionado == 'Activo'
-                                                        ? Colors.green.withValues(alpha: 0.18)
-                                                        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                                                    borderRadius: BorderRadius.circular(8),
+                                                    color: vm.estadoSeleccionado ==
+                                                            'Activo'
+                                                        ? Colors.green
+                                                            .withValues(alpha: 0.18)
+                                                        : colorScheme
+                                                            .surfaceContainerHighest
+                                                            .withValues(alpha: 0.4),
+                                                    borderRadius:
+                                                        BorderRadius.circular(8),
                                                     border: Border.all(
-                                                      color: _estadoSeleccionado == 'Activo'
+                                                      color: vm.estadoSeleccionado ==
+                                                              'Activo'
                                                           ? Colors.green
                                                           : Colors.transparent,
                                                       width: 1.5,
@@ -477,9 +498,11 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                                   child: Text(
                                                     'Activo',
                                                     style: TextStyle(
-                                                      color: _estadoSeleccionado == 'Activo'
+                                                      color: vm.estadoSeleccionado ==
+                                                              'Activo'
                                                           ? Colors.green.shade800
-                                                          : colorScheme.onSurfaceVariant,
+                                                          : colorScheme
+                                                              .onSurfaceVariant,
                                                       fontWeight: FontWeight.bold,
                                                       fontSize: 13,
                                                     ),
@@ -490,18 +513,31 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                             const SizedBox(width: 10),
                                             Expanded(
                                               child: InkWell(
-                                                onTap: () => setState(() => _estadoSeleccionado = 'Inactivo'),
-                                                borderRadius: BorderRadius.circular(8),
+                                                onTap: () =>
+                                                    vm.seleccionarEstado('Inactivo'),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
                                                 child: AnimatedContainer(
-                                                  duration: const Duration(milliseconds: 150),
-                                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                                  duration: const Duration(
+                                                    milliseconds: 150,
+                                                  ),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                    vertical: 8,
+                                                  ),
                                                   decoration: BoxDecoration(
-                                                    color: _estadoSeleccionado == 'Inactivo'
-                                                        ? colorScheme.error.withValues(alpha: 0.15)
-                                                        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                                                    borderRadius: BorderRadius.circular(8),
+                                                    color: vm.estadoSeleccionado ==
+                                                            'Inactivo'
+                                                        ? colorScheme.error
+                                                            .withValues(alpha: 0.15)
+                                                        : colorScheme
+                                                            .surfaceContainerHighest
+                                                            .withValues(alpha: 0.4),
+                                                    borderRadius:
+                                                        BorderRadius.circular(8),
                                                     border: Border.all(
-                                                      color: _estadoSeleccionado == 'Inactivo'
+                                                      color: vm.estadoSeleccionado ==
+                                                              'Inactivo'
                                                           ? colorScheme.error
                                                           : Colors.transparent,
                                                       width: 1.5,
@@ -511,9 +547,11 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                                   child: Text(
                                                     'Inactivo',
                                                     style: TextStyle(
-                                                      color: _estadoSeleccionado == 'Inactivo'
+                                                      color: vm.estadoSeleccionado ==
+                                                              'Inactivo'
                                                           ? colorScheme.error
-                                                          : colorScheme.onSurfaceVariant,
+                                                          : colorScheme
+                                                              .onSurfaceVariant,
                                                       fontWeight: FontWeight.bold,
                                                       fontSize: 13,
                                                     ),
@@ -527,14 +565,14 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 28),
-
-                                  // Botón Guardar / Actualizar
                                   AppButton(
-                                    texto: _guardando
+                                    texto: vm.guardando
                                         ? 'Guardando...'
-                                        : (_esEdicion ? 'Guardar Cambios' : 'Crear Cliente'),
+                                        : (vm.esEdicion
+                                            ? 'Guardar Cambios'
+                                            : 'Crear Cliente'),
                                     icono: Icons.check_circle_outline_rounded,
-                                    onPressed: _guardando ? null : _guardarCliente,
+                                    onPressed: vm.guardando ? null : _guardarCliente,
                                   ),
                                 ],
                               ),
@@ -547,26 +585,11 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
                 ),
               ],
             ),
-
-            // ===============================================================
-            // 2. NAVEGACIÓN LATERAL MODULAR DEL CORE (AppSidebarNavigation)
-            // Barra continua compacta con solapa "Clientes" activa
-            // ===============================================================
             AppSidebarNavigation(
               anchoBarra: _anchoBarraBase,
-              insigniaFlotante: FutureBuilder<Profile>(
-                future: _profileFuture,
-                builder: (context, snapshot) {
-                  final profile = snapshot.data;
-                  final imageProvider = profile?.avatarPath != null
-                      ? AssetImage(profile!.avatarPath) as ImageProvider
-                      : null;
-
-                  return AppFloatingProfileBadge(
-                    proveedorImagen: imageProvider,
-                    onTap: () => _mostrarMenuPerfil(context, profile),
-                  );
-                },
+              insigniaFlotante: AppFloatingProfileBadge(
+                proveedorImagen: imageProvider,
+                onTap: () => _mostrarMenuPerfil(context, profile),
               ),
               seccionPestanas: AppFolderTabBar(
                 items: _obtenerItemsPestanas(context),
