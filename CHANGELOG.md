@@ -7,6 +7,38 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ---
 
+## [2.7.3] — 2026-11-25
+
+### Removed
+- Eliminación definitiva de las mecánicas *legacy* de aportes en instrumentos (`_cargarAportesLegacy`, `aportesMostrados`, estados de carga/error legacy en `InstrumentFormViewModel` e `InstrumentFormScreen`, y la migración legacy al revertir de `Activo` a `Borrador` en `ProcessInstrumentSaveUseCase`).
+
+### Changed
+- Actualizadas las pruebas de `instruments` (`instrument_form_view_model_test.dart`, `process_instrument_save_usecase_test.dart` e `instrument_form_screen_test.dart`) al modelo vigente de aportes explícitos.
+
+---
+
+## [2.7.2] — 2026-11-25
+
+### Added
+- Pruebas unitarias en `transactions_view_model_test.dart` para la resolución del número de instrumento y en `instrument_form_view_model_test.dart` para la validación de número obligatorio.
+
+### Changed
+- `TransactionsViewModel` resuelve el número legible del instrumento (`obtenerNumeroInstrumento`) desde el catálogo de instrumentos sin usar `instrumentoId` como respaldo.
+- `TransactionsScreen` muestra el número del instrumento tanto en las tarjetas de la lista como en el modal de detalle (*Instrumento Asociado*).
+- Reforzada la obligatoriedad del campo `numero` en `ProcessInstrumentSaveUseCase` e `InstrumentFormViewModel`.
+
+---
+
+## [2.7.1] — 2026-11-25
+
+### Added
+- Prueba unitaria en `clients_view_model_test.dart` para verificar el cálculo de `saldoDisponible` con ingresos, egresos, saldo negativo y cero.
+
+### Changed
+- `ClientsScreen` calcula y muestra el saldo disponible real de cada cliente (`cliente.saldoDisponible`) con formato monetario igual a Transacciones (`$ 1.500.000,00`, y en color de error cuando es negativo) tanto en las tarjetas como en la ficha de detalle.
+
+---
+
 ## [2.7.0] — 2026-11-25
 
 ### Changed
