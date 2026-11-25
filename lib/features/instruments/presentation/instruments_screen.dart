@@ -1,21 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
+import 'package:provider/provider.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
-import 'package:koralis_app/features/transactions/data/repositories/transaction_repository_impl.dart';
+import 'package:koralis_app/features/profile/presentation/viewmodels/profile_view_model.dart';
 import '../domain/entities/instrument.dart';
 import '../domain/usecases/get_instruments_usecase.dart';
 import '../domain/usecases/save_instrument_usecase.dart';
 import '../domain/usecases/delete_instrument_usecase.dart';
-import '../domain/repositories/instrument_repository.dart';
-import '../data/repositories/instrument_repository_impl.dart';
 import 'instrument_form_screen.dart';
+import 'viewmodels/instruments_view_model.dart';
 
-/// Pantalla principal para la visualización y gestión de instrumentos financieros.
-class InstrumentsScreen extends StatefulWidget {
+/// Pantalla principal para la visualización y gestión de instrumentos financieros (arquitectura MVVM con `provider`).
+class InstrumentsScreen extends StatelessWidget {
   final User user;
   final GetInstrumentsUseCase? getInstrumentsUseCase;
   final SaveInstrumentUseCase? saveInstrumentUseCase;
@@ -31,47 +30,65 @@ class InstrumentsScreen extends StatefulWidget {
     this.getProfileUseCase,
   });
 
+  bool _tieneProvider<T>(BuildContext context) {
+    try {
+      Provider.of<T>(context, listen: false);
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
+  }
+
   @override
-  State<InstrumentsScreen> createState() => _InstrumentsScreenState();
+  Widget build(BuildContext context) {
+    final tieneInstVm = _tieneProvider<InstrumentsViewModel>(context);
+    final tieneProfileVm = _tieneProvider<ProfileViewModel>(context);
+
+    if (tieneInstVm && tieneProfileVm) {
+      return _InstrumentsView(user: user);
+    }
+
+    return MultiProvider(
+      providers: [
+        if (!tieneInstVm)
+          ChangeNotifierProvider<InstrumentsViewModel>(
+            create: (_) => InstrumentsViewModel(
+              userId: user.id,
+              getInstrumentsUseCase: getInstrumentsUseCase,
+              deleteInstrumentUseCase: deleteInstrumentUseCase,
+            ),
+          ),
+        if (!tieneProfileVm)
+          ChangeNotifierProvider<ProfileViewModel>(
+            create: (_) => ProfileViewModel(
+              getProfileUseCase: getProfileUseCase,
+            ),
+          ),
+      ],
+      child: _InstrumentsView(user: user),
+    );
+  }
 }
 
-class _InstrumentsScreenState extends State<InstrumentsScreen> {
+class _InstrumentsView extends StatefulWidget {
+  final User user;
+
+  const _InstrumentsView({required this.user});
+
+  @override
+  State<_InstrumentsView> createState() => _InstrumentsViewState();
+}
+
+class _InstrumentsViewState extends State<_InstrumentsView> {
   static const double _anchoBarraBase = 58.0;
-
-  late final GetInstrumentsUseCase _getInstrumentsUseCase;
-  DeleteInstrumentUseCase? _deleteInstrumentUseCase;
-  late final GetProfileUseCase _getProfileUseCase;
-
-  Future<List<Instrument>>? _instrumentosFuture;
-  Future<Profile>? _profileFuture;
 
   @override
   void initState() {
     super.initState();
-    InstrumentRepository? repo;
-    InstrumentRepository obtenerRepositorio() =>
-        repo ??= InstrumentRepositoryImpl(userId: widget.user.id);
-
-    _getInstrumentsUseCase =
-        widget.getInstrumentsUseCase ??
-        GetInstrumentsUseCase(obtenerRepositorio());
-    _deleteInstrumentUseCase = widget.deleteInstrumentUseCase;
-    _getProfileUseCase =
-        widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
-
-    _cargarDatos();
-  }
-
-  DeleteInstrumentUseCase _obtenerDeleteInstrumentUseCase() =>
-      _deleteInstrumentUseCase ??= DeleteInstrumentUseCase(
-        instrumentRepository: InstrumentRepositoryImpl(userId: widget.user.id),
-        transactionRepository: TransactionRepositoryImpl(userId: widget.user.id),
-      );
-
-  void _cargarDatos() {
-    setState(() {
-      _instrumentosFuture = _getInstrumentsUseCase.execute();
-      _profileFuture = _getProfileUseCase.execute(widget.user.id);
+    Future.microtask(() {
+      if (!mounted) return;
+      context.read<InstrumentsViewModel>().cargarInstrumentos();
+      context.read<ProfileViewModel>().cargarPerfil(widget.user.id);
     });
   }
 
@@ -92,16 +109,14 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
   }
 
   void _navegarNuevoInstrumento(BuildContext context) async {
-    final bool? creado =
-        await Navigator.pushNamed(
-              context,
-              '/instrument_form',
-              arguments: InstrumentFormArgs(user: widget.user),
-            )
-            as bool?;
+    final bool? creado = await Navigator.pushNamed(
+      context,
+      '/instrument_form',
+      arguments: InstrumentFormArgs(user: widget.user),
+    ) as bool?;
 
-    if (creado == true) {
-      _cargarDatos();
+    if (creado == true && context.mounted) {
+      context.read<InstrumentsViewModel>().cargarInstrumentos();
     }
   }
 
@@ -109,19 +124,17 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
     BuildContext context,
     Instrument instrumento,
   ) async {
-    final bool? editado =
-        await Navigator.pushNamed(
-              context,
-              '/instrument_form',
-              arguments: InstrumentFormArgs(
-                user: widget.user,
-                instrument: instrumento,
-              ),
-            )
-            as bool?;
+    final bool? editado = await Navigator.pushNamed(
+      context,
+      '/instrument_form',
+      arguments: InstrumentFormArgs(
+        user: widget.user,
+        instrument: instrumento,
+      ),
+    ) as bool?;
 
-    if (editado == true) {
-      _cargarDatos();
+    if (editado == true && context.mounted) {
+      context.read<InstrumentsViewModel>().cargarInstrumentos();
     }
   }
 
@@ -173,9 +186,10 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
     if (confirmar != true || !mounted) return;
 
     try {
-      await _obtenerDeleteInstrumentUseCase().execute(instrumento);
+      await this.context
+          .read<InstrumentsViewModel>()
+          .eliminarInstrumento(instrumento);
       if (!mounted) return;
-      _cargarDatos();
       AppMessenger.showSuccessSnackBar(
         this.context,
         'Instrumento "${instrumento.numero}" eliminado correctamente',
@@ -205,13 +219,11 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
               children: [
                 CircleAvatar(
                   radius: 28,
-                  backgroundImage:
-                      (profile?.avatarPath != null &&
+                  backgroundImage: (profile?.avatarPath != null &&
                           profile!.avatarPath.isNotEmpty)
                       ? AssetImage(profile.avatarPath)
                       : null,
-                  child:
-                      (profile?.avatarPath == null ||
+                  child: (profile?.avatarPath == null ||
                           profile!.avatarPath.isEmpty)
                       ? const Icon(Icons.person, size: 30)
                       : null,
@@ -313,6 +325,7 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
               ),
               onPressed: () {
                 Navigator.pop(dialogContext);
+                context.read<ProfileViewModel>().limpiar();
                 Navigator.pushNamedAndRemoveUntil(
                   context,
                   '/',
@@ -433,7 +446,6 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 8),
-
             ListTile(
               dense: true,
               leading: const Icon(Icons.date_range_outlined),
@@ -508,6 +520,13 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final vm = context.watch<InstrumentsViewModel>();
+    final profileVm = context.watch<ProfileViewModel>();
+    final profile = profileVm.profile;
+    final imageProvider =
+        (profile?.avatarPath != null && profile!.avatarPath.isNotEmpty)
+            ? AssetImage(profile.avatarPath) as ImageProvider
+            : null;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -538,161 +557,11 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
                           ),
                         ),
                         Expanded(
-                          child: FutureBuilder<List<Instrument>>(
-                            future: _instrumentosFuture,
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState ==
-                                  ConnectionState.waiting) {
-                                return const Center(
-                                  child: CircularProgressIndicator(),
-                                );
-                              }
-
-                              if (snapshot.hasError) {
-                                return Center(
-                                  child: Text(
-                                    'Error al cargar instrumentos: ${snapshot.error}',
-                                    style: TextStyle(color: colorScheme.error),
-                                  ),
-                                );
-                              }
-
-                              final instrumentos = snapshot.data ?? [];
-
-                              if (instrumentos.isEmpty) {
-                                return Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.paid_outlined,
-                                        size: 64,
-                                        color: colorScheme.primary.withValues(
-                                          alpha: 0.35,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 14),
-                                      Text(
-                                        'No hay instrumentos registrados',
-                                        style: theme.textTheme.titleMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'Presiona el botón (+) para agregar tu primera colocación.',
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                              color:
-                                                  colorScheme.onSurfaceVariant,
-                                            ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }
-
-                              return ListView.builder(
-                                physics: const BouncingScrollPhysics(),
-                                padding: const EdgeInsets.only(bottom: 80.0),
-                                itemCount: instrumentos.length,
-                                itemBuilder: (context, index) {
-                                  final inst = instrumentos[index];
-
-                                  return AppListCard(
-                                    // Título enfocado en la entidad financiera sin el número de instrumento
-                                    titulo: inst.entidad.isNotEmpty
-                                        ? inst.entidad
-                                        : 'Instrumento',
-                                    subtitulo:
-                                        'Apertura: ${_formatearFecha(inst.fechaApertura)}  •  Cierre: ${_formatearFecha(inst.fechaCierre)}',
-                                    detalle:
-                                        'Invertido: ${_formatearMoneda(inst.valorInvertido)}  •  Recibido: ${_formatearMoneda(inst.valorRecibido)}',
-                                    colorAcento: colorScheme.primary,
-                                    fusionarSubtituloSiMultilinea: true,
-                                    badge: AppBadge(
-                                      texto: inst.estado,
-                                      color: inst.estado == 'Activo'
-                                          ? Colors.green
-                                          : (inst.estado == 'Borrador'
-                                              ? Colors.amber.shade700
-                                              : Colors.grey.shade600),
-                                    ),
-                                    pie: Row(
-                                      children: [
-                                        // Badge indicador de la tasa pactada (% I.E.A.)
-                                        AppBadge(
-                                          texto:
-                                              '${inst.tasaIea.toStringAsFixed(2)}% I.E.A.',
-                                          color: colorScheme.primary,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            alignment: Alignment.centerRight,
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(
-                                                  'Valor Final Rend: ',
-                                                  style: theme
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
-                                                        color: colorScheme
-                                                            .onSurfaceVariant,
-                                                        fontSize: 12,
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                      ),
-                                                ),
-                                                Text(
-                                                  _formatearMoneda(
-                                                    inst.valorFinalRend,
-                                                  ),
-                                                  style: TextStyle(
-                                                    color:
-                                                        Colors.green.shade800,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 15,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    onTap: () =>
-                                        _mostrarFichaRapida(context, inst),
-                                    accionesSwipe: [
-                                      AppSwipeAction(
-                                        etiqueta: 'Editar',
-                                        icono: Icons.edit_outlined,
-                                        colorFondo: colorScheme.primary,
-                                        onTap: () => _navegarEditarInstrumento(
-                                          context,
-                                          inst,
-                                        ),
-                                      ),
-                                      AppSwipeAction(
-                                        etiqueta: 'Eliminar',
-                                        icono: Icons.delete_outline_rounded,
-                                        colorFondo: colorScheme.error,
-                                        onTap: () =>
-                                            _confirmarEliminarInstrumento(
-                                          context,
-                                          inst,
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              );
-                            },
+                          child: _buildListaInstrumentos(
+                            context,
+                            vm: vm,
+                            theme: theme,
+                            colorScheme: colorScheme,
                           ),
                         ),
                       ],
@@ -703,21 +572,9 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
             ),
             AppSidebarNavigation(
               anchoBarra: _anchoBarraBase,
-              insigniaFlotante: FutureBuilder<Profile>(
-                future: _profileFuture,
-                builder: (context, snapshot) {
-                  final profile = snapshot.data;
-                  final imageProvider =
-                      (profile?.avatarPath != null &&
-                          profile!.avatarPath.isNotEmpty)
-                      ? AssetImage(profile.avatarPath) as ImageProvider
-                      : null;
-
-                  return AppFloatingProfileBadge(
-                    proveedorImagen: imageProvider,
-                    onTap: () => _mostrarMenuPerfil(context, profile),
-                  );
-                },
+              insigniaFlotante: AppFloatingProfileBadge(
+                proveedorImagen: imageProvider,
+                onTap: () => _mostrarMenuPerfil(context, profile),
               ),
               seccionPestanas: AppFolderTabBar(
                 items: _obtenerItemsPestanas(context),
@@ -734,6 +591,136 @@ class _InstrumentsScreenState extends State<InstrumentsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildListaInstrumentos(
+    BuildContext context, {
+    required InstrumentsViewModel vm,
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+  }) {
+    if (vm.isLoading && vm.instrumentos.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (vm.errorMessage != null && vm.instrumentos.isEmpty) {
+      return Center(
+        child: Text(
+          'Error al cargar instrumentos: ${vm.errorMessage}',
+          style: TextStyle(color: colorScheme.error),
+        ),
+      );
+    }
+
+    final instrumentos = vm.instrumentos;
+
+    if (instrumentos.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.paid_outlined,
+              size: 64,
+              color: colorScheme.primary.withValues(alpha: 0.35),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'No hay instrumentos registrados',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Presiona el botón (+) para agregar tu primera colocación.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 80.0),
+      itemCount: instrumentos.length,
+      itemBuilder: (context, index) {
+        final inst = instrumentos[index];
+
+        return AppListCard(
+          titulo: inst.entidad.isNotEmpty ? inst.entidad : 'Instrumento',
+          subtitulo:
+              'Apertura: ${_formatearFecha(inst.fechaApertura)}  •  Cierre: ${_formatearFecha(inst.fechaCierre)}',
+          detalle:
+              'Invertido: ${_formatearMoneda(inst.valorInvertido)}  •  Recibido: ${_formatearMoneda(inst.valorRecibido)}',
+          colorAcento: colorScheme.primary,
+          fusionarSubtituloSiMultilinea: true,
+          badge: AppBadge(
+            texto: inst.estado,
+            color: inst.estado == 'Activo'
+                ? Colors.green
+                : (inst.estado == 'Borrador'
+                    ? Colors.amber.shade700
+                    : Colors.grey.shade600),
+          ),
+          pie: Row(
+            children: [
+              AppBadge(
+                texto: '${inst.tasaIea.toStringAsFixed(2)}% I.E.A.',
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Valor Final Rend: ',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        _formatearMoneda(inst.valorFinalRend),
+                        style: TextStyle(
+                          color: Colors.green.shade800,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          onTap: () => _mostrarFichaRapida(context, inst),
+          accionesSwipe: [
+            AppSwipeAction(
+              etiqueta: 'Editar',
+              icono: Icons.edit_outlined,
+              colorFondo: colorScheme.primary,
+              onTap: () => _navegarEditarInstrumento(context, inst),
+            ),
+            AppSwipeAction(
+              etiqueta: 'Eliminar',
+              icono: Icons.delete_outline_rounded,
+              colorFondo: colorScheme.error,
+              onTap: () => _confirmarEliminarInstrumento(context, inst),
+            ),
+          ],
+        );
+      },
     );
   }
 }

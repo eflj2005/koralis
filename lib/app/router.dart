@@ -10,6 +10,8 @@ import 'package:koralis_app/features/clients/presentation/viewmodels/clients_vie
 import 'package:koralis_app/features/clients/presentation/viewmodels/client_form_view_model.dart';
 import 'package:koralis_app/features/instruments/presentation/instruments_screen.dart';
 import 'package:koralis_app/features/instruments/presentation/instrument_form_screen.dart';
+import 'package:koralis_app/features/instruments/presentation/viewmodels/instruments_view_model.dart';
+import 'package:koralis_app/features/instruments/presentation/viewmodels/instrument_form_view_model.dart';
 import 'package:koralis_app/features/transactions/presentation/transactions_screen.dart';
 import 'package:koralis_app/features/transactions/presentation/transaction_form_screen.dart';
 import 'package:koralis_app/features/transactions/presentation/viewmodels/transactions_view_model.dart';
@@ -65,21 +67,33 @@ class AppRouter {
       case '/instruments':
         final user = settings.arguments as User;
         return MaterialPageRoute(
-          builder: (_) => InstrumentsScreen(user: user),
+          builder: (_) => ChangeNotifierProvider<InstrumentsViewModel>(
+            create: (_) => InstrumentsViewModel(userId: user.id),
+            child: InstrumentsScreen(user: user),
+          ),
         );
       case '/instrument_form':
         if (settings.arguments is InstrumentFormArgs) {
           final args = settings.arguments as InstrumentFormArgs;
           return MaterialPageRoute(
-            builder: (_) => InstrumentFormScreen(
-              user: args.user,
-              instrument: args.instrument,
+            builder: (_) => ChangeNotifierProvider<InstrumentFormViewModel>(
+              create: (_) => InstrumentFormViewModel(
+                userId: args.user.id,
+                instrumentInicial: args.instrument,
+              ),
+              child: InstrumentFormScreen(
+                user: args.user,
+                instrument: args.instrument,
+              ),
             ),
           );
         } else if (settings.arguments is User) {
           final user = settings.arguments as User;
           return MaterialPageRoute(
-            builder: (_) => InstrumentFormScreen(user: user),
+            builder: (_) => ChangeNotifierProvider<InstrumentFormViewModel>(
+              create: (_) => InstrumentFormViewModel(userId: user.id),
+              child: InstrumentFormScreen(user: user),
+            ),
           );
         }
         return MaterialPageRoute(builder: (_) => const LoginScreen());

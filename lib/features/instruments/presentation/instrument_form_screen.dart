@@ -1,27 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:core/core.dart' hide Transaction;
+import 'package:provider/provider.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:koralis_app/features/profile/presentation/viewmodels/profile_view_model.dart';
 import 'package:koralis_app/features/clients/domain/entities/client.dart';
 import 'package:koralis_app/features/clients/domain/usecases/get_clients_usecase.dart';
-import 'package:koralis_app/features/clients/data/repositories/client_repository_impl.dart';
-import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/get_transactions_usecase.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/save_transaction_usecase.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/delete_transaction_usecase.dart';
-import 'package:koralis_app/features/transactions/data/repositories/transaction_repository_impl.dart';
 import '../domain/entities/instrument.dart';
 import '../domain/usecases/save_instrument_usecase.dart';
 import '../domain/usecases/process_instrument_save_usecase.dart';
-import '../domain/repositories/instrument_repository.dart';
-import '../data/repositories/instrument_repository_impl.dart';
-import '../domain/entities/bank.dart';
 import '../domain/usecases/get_banks_usecase.dart';
-import '../data/repositories/bank_repository_impl.dart';
+import 'viewmodels/instrument_form_view_model.dart';
 
 /// Argumentos para la navegación hacia la pantalla de formulario de instrumento.
 class InstrumentFormArgs {
@@ -31,8 +26,8 @@ class InstrumentFormArgs {
   const InstrumentFormArgs({required this.user, this.instrument});
 }
 
-/// Pantalla independiente para la creación y edición de instrumentos financieros.
-class InstrumentFormScreen extends StatefulWidget {
+/// Pantalla independiente para la creación y edición de instrumentos financieros (arquitectura MVVM con `provider`).
+class InstrumentFormScreen extends StatelessWidget {
   final User user;
   final Instrument? instrument;
   final SaveInstrumentUseCase? saveInstrumentUseCase;
@@ -56,69 +51,82 @@ class InstrumentFormScreen extends StatefulWidget {
     this.deleteTransactionUseCase,
   });
 
+  bool _tieneProvider<T>(BuildContext context) {
+    try {
+      Provider.of<T>(context, listen: false);
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
+  }
+
   @override
-  State<InstrumentFormScreen> createState() => _InstrumentFormScreenState();
+  Widget build(BuildContext context) {
+    final tieneFormVm = _tieneProvider<InstrumentFormViewModel>(context);
+    final tieneProfileVm = _tieneProvider<ProfileViewModel>(context);
+
+    if (tieneFormVm && tieneProfileVm) {
+      return _InstrumentFormView(user: user);
+    }
+
+    return MultiProvider(
+      providers: [
+        if (!tieneFormVm)
+          ChangeNotifierProvider<InstrumentFormViewModel>(
+            create: (_) => InstrumentFormViewModel(
+              userId: user.id,
+              instrumentInicial: instrument,
+              saveInstrumentUseCase: saveInstrumentUseCase,
+              getBanksUseCase: getBanksUseCase,
+              getTransactionsUseCase: getTransactionsUseCase,
+              getClientsUseCase: getClientsUseCase,
+              saveTransactionUseCase: saveTransactionUseCase,
+              deleteTransactionUseCase: deleteTransactionUseCase,
+            ),
+          ),
+        if (!tieneProfileVm)
+          ChangeNotifierProvider<ProfileViewModel>(
+            create: (_) => ProfileViewModel(
+              getProfileUseCase: getProfileUseCase,
+            ),
+          ),
+      ],
+      child: _InstrumentFormView(user: user),
+    );
+  }
 }
 
-class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
+class _InstrumentFormView extends StatefulWidget {
+  final User user;
+
+  const _InstrumentFormView({required this.user});
+
+  @override
+  State<_InstrumentFormView> createState() => _InstrumentFormViewState();
+}
+
+class _InstrumentFormViewState extends State<_InstrumentFormView> {
   static const double _anchoBarraBase = 58.0;
 
   final _formKey = GlobalKey<FormState>();
 
   late final TextEditingController _numeroCtrl;
   late final TextEditingController _entidadCtrl;
-  late DateTime _fechaApertura;
   late final TextEditingController _diasCtrl;
   late final TextEditingController _tasaIeaCtrl;
   late final TextEditingController _valorInvertidoCtrl;
   late final TextEditingController _rendimientoTProyecCtrl;
   late final TextEditingController _retencionPorcentajeCtrl;
   late final TextEditingController _observacionCtrl;
-  late String _estado;
-  Instrument? _instrumentoPersistido;
-  late List<InstrumentContribution> _aportes;
-  late String _estadoPersistido;
-  bool _huboCambiosPersistidos = false;
-
-  bool _guardando = false;
-
-  late final SaveInstrumentUseCase _saveInstrumentUseCase;
-  late final GetProfileUseCase _getProfileUseCase;
-  late final GetBanksUseCase _getBanksUseCase;
-  Future<Profile>? _profileFuture;
-  Future<List<Transaction>>? _transaccionesAsociadasFuture;
-
-  List<Bank> _bancos = [];
-  bool _cargandoBancos = true;
-
-  bool get _esEdicion => widget.instrument != null;
 
   @override
   void initState() {
     super.initState();
-    InstrumentRepository? repo;
-    InstrumentRepository obtenerRepositorio() =>
-        repo ??= InstrumentRepositoryImpl(userId: widget.user.id);
+    final vm = context.read<InstrumentFormViewModel>();
+    final actual = vm.instrumentInicial;
 
-    _saveInstrumentUseCase =
-        widget.saveInstrumentUseCase ??
-        SaveInstrumentUseCase(obtenerRepositorio());
-    _getProfileUseCase =
-        widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
-    _getBanksUseCase =
-        widget.getBanksUseCase ?? GetBanksUseCase(BankRepositoryImpl());
-
-    final actual = widget.instrument;
-    _instrumentoPersistido = actual;
-    _aportes = List<InstrumentContribution>.from(actual?.aportes ?? const []);
-    _estadoPersistido = actual?.estado ?? 'Borrador';
-
-    if (_esEdicion && _aportes.isEmpty && _estadoPersistido != 'Borrador') {
-      _transaccionesAsociadasFuture = _cargarTransaccionesAsociadas();
-    }
     _numeroCtrl = TextEditingController(text: actual?.numero ?? '');
     _entidadCtrl = TextEditingController(text: actual?.entidad ?? '');
-    _fechaApertura = actual?.fechaApertura ?? DateTime.now();
     _diasCtrl = TextEditingController(
       text: actual != null ? actual.dias.toString() : '',
     );
@@ -132,204 +140,46 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
       text: actual != null ? actual.rendimientoTProyec.toStringAsFixed(0) : '',
     );
     _retencionPorcentajeCtrl = TextEditingController(
-      text: actual != null
-          ? actual.retencionPorcentaje.toStringAsFixed(2)
-          : '4.00',
+      text: actual != null ? actual.retencionPorcentaje.toStringAsFixed(2) : '4.00',
     );
     _observacionCtrl = TextEditingController(text: actual?.observacion ?? '');
-    _estado = actual?.estado ?? 'Borrador';
 
-    // Escuchadores reactivos para recalcular valores en vivo
-    _diasCtrl.addListener(_actualizarCalculos);
-    _valorInvertidoCtrl.addListener(_actualizarCalculos);
-    _rendimientoTProyecCtrl.addListener(_actualizarCalculos);
-    _retencionPorcentajeCtrl.addListener(_actualizarCalculos);
+    _diasCtrl.addListener(_sincronizarCalculos);
+    _valorInvertidoCtrl.addListener(_sincronizarCalculos);
+    _rendimientoTProyecCtrl.addListener(_sincronizarCalculos);
+    _retencionPorcentajeCtrl.addListener(_sincronizarCalculos);
 
-    _profileFuture = _getProfileUseCase.execute(widget.user.id);
-    _cargarBancos();
+    Future.microtask(() {
+      if (!mounted) return;
+      context.read<InstrumentFormViewModel>().inicializar();
+      context.read<ProfileViewModel>().cargarPerfil(widget.user.id);
+    });
   }
 
-  /// Carga asíncronamente las entidades bancarias registradas en la colección 'banks'.
-  Future<void> _cargarBancos() async {
-    try {
-      final bancos = await _getBanksUseCase.execute();
-      if (mounted) {
-        setState(() {
-          _bancos = bancos;
-          _cargandoBancos = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _cargandoBancos = false);
-      }
-    }
-  }
-
-  /// Carga asíncronamente las transacciones registradas para obtener las inversiones asociadas.
-  Future<List<Transaction>> _cargarTransaccionesAsociadas() async {
-    try {
-      final useCase = widget.getTransactionsUseCase ??
-          GetTransactionsUseCase(TransactionRepositoryImpl(userId: widget.user.id));
-      return await useCase.execute();
-    } catch (_) {
-      // En pruebas unitarias donde Firebase no esté inicializado o no haya mock,
-      // retorna una lista vacía de forma segura sin provocar excepciones.
-      return [];
-    }
-  }
-
-  /// Carga asíncronamente los clientes registrados en la colección 'clients'.
-  Future<List<Client>> _cargarClientesDisponibles() async {
-    try {
-      final useCase = widget.getClientsUseCase ??
-          GetClientsUseCase(ClientRepositoryImpl(userId: widget.user.id));
-      return await useCase.execute();
-    } catch (_) {
-      // En pruebas unitarias donde Firebase no esté inicializado o no haya mock,
-      // retorna una lista vacía de forma segura.
-      return [];
-    }
-  }
-
-  /// Persiste la lista de aportes directamente en el documento del instrumento en estado Borrador
-  /// sin generar ni modificar transacciones automáticas en los clientes.
-  Future<void> _persistirAportesEnBorrador(
-    List<InstrumentContribution> nuevosAportes,
-  ) async {
-    final base = _instrumentoPersistido ?? widget.instrument!;
-    final actualizado = base.copyWith(
-      estado: 'Borrador',
-      aportes: nuevosAportes,
-    );
-    await _saveInstrumentUseCase.execute(actualizado);
-    if (mounted) {
-      setState(() {
-        _aportes = List<InstrumentContribution>.from(nuevosAportes);
-        _instrumentoPersistido = actualizado;
-        _huboCambiosPersistidos = true;
-      });
-    }
-  }
-
-  /// Solicita confirmación y elimina un aporte en estado Borrador sin afectar saldos.
-  Future<void> _confirmarEliminarAporte(
-    BuildContext context,
-    InstrumentContribution aporte,
-  ) async {
-    if (_estado != 'Borrador' || _estadoPersistido != 'Borrador') {
-      AppMessenger.showInfoSnackBar(
-        context,
-        'Los aportes solo pueden eliminarse mientras el instrumento esté guardado en estado "Borrador"',
-      );
-      return;
-    }
-
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(
-              Icons.warning_amber_rounded,
-              color: colorScheme.error,
-              size: 24,
-            ),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text(
-                'Eliminar Aporte',
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          '¿Estás seguro de eliminar el aporte de ${_formatearMoneda(aporte.valor)} perteneciente a ${aporte.clienteNombre}?\n\n'
-          'El aporte está en borrador y aún no ha afectado el saldo disponible del cliente.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: colorScheme.error,
-              foregroundColor: colorScheme.onError,
-            ),
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmar == true && mounted) {
-      try {
-        final nuevosAportes = _aportes
-            .where((a) => a.clienteId != aporte.clienteId)
-            .toList();
-        await _persistirAportesEnBorrador(nuevosAportes);
-        if (mounted) {
-          AppMessenger.showSuccessSnackBar(
-            this.context,
-            'Aporte de ${_formatearMoneda(aporte.valor)} eliminado correctamente',
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          AppMessenger.showErrorSnackBar(
-            this.context,
-            'No fue posible eliminar el aporte: $e',
-          );
-        }
-      }
-    }
-  }
-
-  /// Genera los items de la lista desplegable de entidades financieras.
-  List<DropdownMenuItem<String>> _generarItemsBancos() {
-    final valorActual = _entidadCtrl.text.trim();
-    final items = <DropdownMenuItem<String>>[];
-
-    // Si el instrumento en edición tiene una entidad previa que no está en la colección,
-    // se agrega dinámicamente para permitir su selección sin errores de aserción.
-    if (valorActual.isNotEmpty &&
-        !_bancos.any((b) => b.nombre == valorActual)) {
-      items.add(
-        DropdownMenuItem<String>(
-          value: valorActual,
-          child: Text(valorActual, overflow: TextOverflow.ellipsis),
-        ),
-      );
-    }
-
-    for (final banco in _bancos) {
-      items.add(
-        DropdownMenuItem<String>(
-          value: banco.nombre,
-          child: Text(banco.nombre, overflow: TextOverflow.ellipsis),
-        ),
-      );
-    }
-
-    return items;
-  }
-
-  void _actualizarCalculos() {
-    if (mounted) setState(() {});
+  void _sincronizarCalculos() {
+    if (!mounted) return;
+    context.read<InstrumentFormViewModel>().actualizarCalculos(
+          dias: int.tryParse(_diasCtrl.text.trim()) ?? 0,
+          valorInvertido:
+              double.tryParse(_valorInvertidoCtrl.text.replaceAll(',', '.').trim()) ??
+                  0.0,
+          rendimientoTProyec: double.tryParse(
+                _rendimientoTProyecCtrl.text.replaceAll(',', '.').trim(),
+              ) ??
+              0.0,
+          retencionPorcentaje: double.tryParse(
+                _retencionPorcentajeCtrl.text.replaceAll(',', '.').trim(),
+              ) ??
+              0.0,
+        );
   }
 
   @override
   void dispose() {
-    _diasCtrl.removeListener(_actualizarCalculos);
-    _valorInvertidoCtrl.removeListener(_actualizarCalculos);
-    _rendimientoTProyecCtrl.removeListener(_actualizarCalculos);
-    _retencionPorcentajeCtrl.removeListener(_actualizarCalculos);
+    _diasCtrl.removeListener(_sincronizarCalculos);
+    _valorInvertidoCtrl.removeListener(_sincronizarCalculos);
+    _rendimientoTProyecCtrl.removeListener(_sincronizarCalculos);
+    _retencionPorcentajeCtrl.removeListener(_sincronizarCalculos);
 
     _numeroCtrl.dispose();
     _entidadCtrl.dispose();
@@ -341,38 +191,6 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     _observacionCtrl.dispose();
     super.dispose();
   }
-
-  // ---------------------------------------------------------------------------
-  // Getters de Cálculos Reactivos
-  // ---------------------------------------------------------------------------
-
-  int get _dias => int.tryParse(_diasCtrl.text.trim()) ?? 0;
-
-  DateTime get _fechaCierre => _fechaApertura.add(Duration(days: _dias));
-
-  double get _valorInvertido =>
-      double.tryParse(_valorInvertidoCtrl.text.replaceAll(',', '.').trim()) ??
-      0.0;
-
-  double get _rendimientoTProyec =>
-      double.tryParse(
-        _rendimientoTProyecCtrl.text.replaceAll(',', '.').trim(),
-      ) ??
-      0.0;
-
-  double get _valorRecibido => _valorInvertido + _rendimientoTProyec;
-
-  double get _rendimientos => _valorRecibido - _valorInvertido;
-
-  double get _retencionPorcentaje =>
-      double.tryParse(
-        _retencionPorcentajeCtrl.text.replaceAll(',', '.').trim(),
-      ) ??
-      0.0;
-
-  double get _retencionValor => _rendimientos * (_retencionPorcentaje / 100.0);
-
-  double get _valorFinalRend => _rendimientos - _retencionValor;
 
   String _formatearMoneda(double valor) {
     final partes = valor.toStringAsFixed(2).split('.');
@@ -390,19 +208,48 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     return '$dia/$mes/$anio';
   }
 
-  Future<void> _seleccionarFechaApertura(BuildContext context) async {
+  Future<void> _seleccionarFechaApertura(
+    BuildContext context,
+    InstrumentFormViewModel vm,
+  ) async {
     final DateTime? seleccionada = await showDatePicker(
       context: context,
-      initialDate: _fechaApertura,
+      initialDate: vm.fechaApertura,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
       helpText: 'Seleccionar Fecha de Apertura',
     );
-    if (seleccionada != null && seleccionada != _fechaApertura) {
-      setState(() {
-        _fechaApertura = seleccionada;
-      });
+    if (seleccionada != null && seleccionada != vm.fechaApertura) {
+      vm.seleccionarFechaApertura(seleccionada);
     }
+  }
+
+  List<DropdownMenuItem<String>> _generarItemsBancos(
+    InstrumentFormViewModel vm,
+  ) {
+    final valorActual = _entidadCtrl.text.trim();
+    final items = <DropdownMenuItem<String>>[];
+
+    if (valorActual.isNotEmpty &&
+        !vm.bancos.any((b) => b.nombre == valorActual)) {
+      items.add(
+        DropdownMenuItem<String>(
+          value: valorActual,
+          child: Text(valorActual, overflow: TextOverflow.ellipsis),
+        ),
+      );
+    }
+
+    for (final banco in vm.bancos) {
+      items.add(
+        DropdownMenuItem<String>(
+          value: banco.nombre,
+          child: Text(banco.nombre, overflow: TextOverflow.ellipsis),
+        ),
+      );
+    }
+
+    return items;
   }
 
   Future<bool> _confirmarReversionABorrador(BuildContext context) async {
@@ -526,96 +373,562 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     );
   }
 
-  Future<void> _guardarInstrumento() async {
+  Future<void> _guardarInstrumento(InstrumentFormViewModel vm) async {
     if (!_formKey.currentState!.validate()) return;
 
-    final previo = _instrumentoPersistido ?? widget.instrument;
-    if (_esEdicion && _estadoPersistido == 'Activo' && _estado == 'Borrador') {
+    if (vm.requiereConfirmacionReversion) {
       final confirmado = await _confirmarReversionABorrador(context);
       if (!confirmado || !mounted) return;
     }
 
-    setState(() => _guardando = true);
-
-    // Si es edición conserva el ID existente, si es nuevo se envía vacío para que
-    // la capa de datos asigne el identificador alfanumérico nativo de Cloud Firestore.
-    final id = widget.instrument?.id ?? '';
-    final fechaCreacion = widget.instrument?.fechaCreacion ?? DateTime.now();
-
-    final instrumento = Instrument(
-      id: id,
-      numero: _numeroCtrl.text.trim(),
-      entidad: _entidadCtrl.text.trim(),
-      fechaApertura: _fechaApertura,
-      dias: _dias,
-      tasaIea:
-          double.tryParse(_tasaIeaCtrl.text.replaceAll(',', '.').trim()) ?? 0.0,
-      valorInvertido: _valorInvertido,
-      rendimientoTProyec: _rendimientoTProyec,
-      retencionPorcentaje: _retencionPorcentaje,
-      observacion: _observacionCtrl.text.trim(),
-      estado: _estado,
-      fechaCreacion: fechaCreacion,
-      participaciones: widget.instrument?.participaciones ?? const [],
-      aportes: _aportes,
-      userId: widget.user.id,
-    );
-
-    final processUseCase = ProcessInstrumentSaveUseCase(
-      saveInstrumentUseCase: _saveInstrumentUseCase,
-      getClientsUseCase: widget.getClientsUseCase ??
-          GetClientsUseCase(ClientRepositoryImpl(userId: widget.user.id)),
-      getTransactionsUseCase: widget.getTransactionsUseCase ??
-          GetTransactionsUseCase(TransactionRepositoryImpl(userId: widget.user.id)),
-      saveTransactionUseCase: widget.saveTransactionUseCase ??
-          SaveTransactionUseCase(TransactionRepositoryImpl(userId: widget.user.id)),
-      deleteTransactionUseCase: widget.deleteTransactionUseCase ??
-          DeleteTransactionUseCase(
-            TransactionRepositoryImpl(userId: widget.user.id),
-          ),
-    );
-
     try {
-      final resultado = await processUseCase.execute(
-        instrumentoNuevo: instrumento,
-        instrumentoPrevio: previo,
+      final resultado = await vm.guardarInstrumento(
+        numero: _numeroCtrl.text,
+        entidad: _entidadCtrl.text,
+        tasaIea:
+            double.tryParse(_tasaIeaCtrl.text.replaceAll(',', '.').trim()) ?? 0.0,
+        observacion: _observacionCtrl.text,
       );
-      if (mounted) {
-        _huboCambiosPersistidos = false;
-        final String mensaje;
-        if (resultado.transaccionesGeneradas > 0) {
-          mensaje =
-              'Instrumento "${instrumento.numero}" activado con ${resultado.transaccionesGeneradas} transacción(es) de inversión';
-        } else if (resultado.transaccionesReversadas > 0) {
-          mensaje =
-              'Instrumento "${instrumento.numero}" revertido a Borrador y ${resultado.transaccionesReversadas} transacción(es) reintegrada(s)';
-        } else {
-          mensaje = _esEdicion
-              ? 'Instrumento "${instrumento.numero}" actualizado correctamente'
-              : 'Instrumento "${instrumento.numero}" creado exitosamente';
-        }
-        AppMessenger.showSuccessSnackBar(context, mensaje);
-        Navigator.pop(context, true);
+
+      if (!mounted) return;
+      final numero = resultado.instrumentoGuardado.numero;
+      final String mensaje;
+      if (resultado.transaccionesGeneradas > 0) {
+        mensaje =
+            'Instrumento "$numero" activado con ${resultado.transaccionesGeneradas} transacción(es) de inversión';
+      } else if (resultado.transaccionesReversadas > 0) {
+        mensaje =
+            'Instrumento "$numero" revertido a Borrador y ${resultado.transaccionesReversadas} transacción(es) reintegrada(s)';
+      } else {
+        mensaje = vm.esEdicion
+            ? 'Instrumento "$numero" actualizado correctamente'
+            : 'Instrumento "$numero" creado exitosamente';
       }
+      AppMessenger.showSuccessSnackBar(context, mensaje);
+      Navigator.pop(context, true);
     } on InsufficientBalanceException catch (e) {
       if (mounted) {
-        setState(() => _guardando = false);
         await _mostrarDialogoSaldoInsuficiente(context, e);
       }
     } on InvalidInstrumentStateTransitionException catch (e) {
       if (mounted) {
-        setState(() => _guardando = false);
         AppMessenger.showInfoSnackBar(context, e.message);
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _guardando = false);
         AppMessenger.showErrorSnackBar(
           context,
           'No fue posible guardar el instrumento: $e',
         );
       }
     }
+  }
+
+  /// Solicita confirmación y elimina un aporte en estado Borrador sin afectar saldos.
+  Future<void> _confirmarEliminarAporte(
+    BuildContext context,
+    InstrumentFormViewModel vm,
+    InstrumentContribution aporte,
+  ) async {
+    if (!vm.puedeGestionarAportes) {
+      AppMessenger.showInfoSnackBar(
+        context,
+        'Los aportes solo pueden eliminarse mientras el instrumento esté guardado en estado "Borrador"',
+      );
+      return;
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: colorScheme.error,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Eliminar Aporte',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          '¿Estás seguro de eliminar el aporte de ${_formatearMoneda(aporte.valor)} perteneciente a ${aporte.clienteNombre}?\n\n'
+          'El aporte está en borrador y aún no ha afectado el saldo disponible del cliente.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true && mounted) {
+      try {
+        await vm.eliminarAporteEnBorrador(aporte.clienteId);
+        if (mounted) {
+          AppMessenger.showSuccessSnackBar(
+            this.context,
+            'Aporte de ${_formatearMoneda(aporte.valor)} eliminado correctamente',
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          AppMessenger.showErrorSnackBar(
+            this.context,
+            'No fue posible eliminar el aporte: $e',
+          );
+        }
+      }
+    }
+  }
+
+  /// Abre la hoja modal emergente para registrar o modificar un aporte en borrador (sin descontar saldo aún).
+  Future<void> _abrirModalNuevoAporte(
+    BuildContext context,
+    InstrumentFormViewModel vm, {
+    InstrumentContribution? aporteAEditar,
+  }) async {
+    if (!vm.puedeGestionarAportes) {
+      AppMessenger.showInfoSnackBar(
+        context,
+        'Los aportes solo pueden gestionarse mientras el instrumento esté guardado en estado "Borrador"',
+      );
+      return;
+    }
+
+    if (!vm.esEdicion || vm.instrumentInicial == null) {
+      AppMessenger.showInfoSnackBar(
+        context,
+        'Debes registrar el instrumento antes de asociar aportes de clientes',
+      );
+      return;
+    }
+
+    final esModificacion = aporteAEditar != null;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final valorAporteCtrl = TextEditingController(
+      text: esModificacion ? aporteAEditar.valor.toStringAsFixed(0) : '',
+    );
+    final modalFormKey = GlobalKey<FormState>();
+
+    List<Client> clientesDisponibles = [];
+    bool cargandoClientes = true;
+    bool consultaIniciada = false;
+    Client? clienteSeleccionado;
+    bool guardandoAporte = false;
+    String? errorCarga;
+
+    await showAppModalBottomSheet(
+      context,
+      child: StatefulBuilder(
+        builder: (modalContext, setModalState) {
+          if (!consultaIniciada && cargandoClientes && errorCarga == null) {
+            consultaIniciada = true;
+            vm.cargarClientesDisponibles().then((todosLosClientes) {
+              if (modalContext.mounted) {
+                setModalState(() {
+                  if (esModificacion) {
+                    clienteSeleccionado = todosLosClientes.firstWhere(
+                      (c) => c.id == aporteAEditar.clienteId,
+                      orElse: () => Client(
+                        id: aporteAEditar.clienteId,
+                        nombre: aporteAEditar.clienteNombre,
+                        documento: '',
+                        correo: '',
+                        telefono: '',
+                      ),
+                    );
+                    clientesDisponibles = [clienteSeleccionado!];
+                  } else {
+                    final idsClientesConAporte =
+                        vm.aportes.map((a) => a.clienteId).toSet();
+                    clientesDisponibles = todosLosClientes
+                        .where((c) =>
+                            c.estado == 'Activo' &&
+                            !idsClientesConAporte.contains(c.id))
+                        .toList();
+                  }
+                  cargandoClientes = false;
+                });
+              }
+            }).catchError((err) {
+              if (modalContext.mounted) {
+                setModalState(() {
+                  errorCarga = 'No fue posible consultar clientes: $err';
+                  cargandoClientes = false;
+                });
+              }
+            });
+          }
+
+          final disponibleMaximo = clienteSeleccionado?.saldoDisponible ?? 0.0;
+
+          return Material(
+            color: Colors.transparent,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: Form(
+                key: modalFormKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            esModificacion
+                                ? Icons.edit_note_rounded
+                                : Icons.savings_outlined,
+                            color: colorScheme.primary,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                esModificacion
+                                    ? 'Modificar Aporte de Inversión'
+                                    : 'Nuevo Aporte de Inversión',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Instrumento: ${vm.instrumentInicial!.numero}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => Navigator.pop(modalContext),
+                          tooltip: 'Cerrar',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    const SizedBox(height: 16),
+                    if (cargandoClientes)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24.0),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (errorCarga != null)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          errorCarga!,
+                          style: TextStyle(
+                            color: colorScheme.error,
+                            fontSize: 13,
+                          ),
+                        ),
+                      )
+                    else if (!esModificacion && clientesDisponibles.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Todos los clientes activos ya cuentan con un aporte registrado en este instrumento.',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else ...[
+                      if (esModificacion)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: colorScheme.outline.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.person_rounded,
+                                color: colorScheme.primary,
+                                size: 22,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Cliente Inversor',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: colorScheme.onSurfaceVariant,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${clienteSeleccionado?.nombre ?? aporteAEditar.clienteNombre}${clienteSeleccionado?.documento.isNotEmpty == true ? " - ${clienteSeleccionado!.documento}" : ""}',
+                                      style:
+                                          theme.textTheme.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        AppDropdownField<String>(
+                          label: 'Cliente Inversor *',
+                          hint: 'Selecciona el cliente...',
+                          icono: Icons.person_search_rounded,
+                          value: clientesDisponibles
+                                  .any((c) => c.id == clienteSeleccionado?.id)
+                              ? clienteSeleccionado?.id
+                              : null,
+                          items: clientesDisponibles.map((c) {
+                            final docInfo = c.documento.isNotEmpty
+                                ? ' - ${c.documento}'
+                                : '';
+                            return DropdownMenuItem<String>(
+                              value: c.id,
+                              child: Text(
+                                '${c.nombre}$docInfo',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (id) {
+                            setModalState(() {
+                              clienteSeleccionado = clientesDisponibles
+                                  .cast<Client?>()
+                                  .firstWhere(
+                                    (c) => c?.id == id,
+                                    orElse: () => null,
+                                  );
+                            });
+                          },
+                          validator: (val) {
+                            if (val == null || val.trim().isEmpty) {
+                              return 'Selecciona un cliente';
+                            }
+                            return null;
+                          },
+                        ),
+                      const SizedBox(height: 14),
+                      if (clienteSeleccionado != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: disponibleMaximo > 0
+                                ? Colors.green.withValues(alpha: 0.1)
+                                : Colors.amber.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: disponibleMaximo > 0
+                                  ? Colors.green.withValues(alpha: 0.35)
+                                  : Colors.amber.shade700,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                disponibleMaximo > 0
+                                    ? Icons.account_balance_wallet_outlined
+                                    : Icons.warning_amber_rounded,
+                                color: disponibleMaximo > 0
+                                    ? Colors.green.shade800
+                                    : Colors.amber.shade900,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      esModificacion
+                                          ? 'Disponible Máximo para este Aporte'
+                                          : (disponibleMaximo > 0
+                                              ? 'Saldo Disponible del Cliente'
+                                              : 'Sin Saldo Disponible'),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: disponibleMaximo > 0
+                                            ? Colors.green.shade900
+                                            : Colors.amber.shade900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _formatearMoneda(disponibleMaximo),
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: disponibleMaximo > 0
+                                            ? Colors.green.shade900
+                                            : Colors.amber.shade900,
+                                      ),
+                                    ),
+                                    if (esModificacion) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '(Aporte actual en borrador: ${_formatearMoneda(aporteAEditar.valor)} • aún no descontado)',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      AppTextField(
+                        controller: valorAporteCtrl,
+                        label: 'Valor a Invertir (\$)',
+                        hint: 'Ej. 5000000',
+                        icono: Icons.attach_money_rounded,
+                        tipoTeclado: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Ingresa el valor a invertir';
+                          }
+                          final monto =
+                              double.tryParse(val.replaceAll(',', '.').trim());
+                          if (monto == null || monto <= 0) {
+                            return 'Ingresa un valor mayor a cero';
+                          }
+                          if (clienteSeleccionado != null &&
+                              monto > disponibleMaximo) {
+                            return 'Supera el disponible (${_formatearMoneda(disponibleMaximo)})';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 22),
+                      AppButton(
+                        texto: guardandoAporte
+                            ? 'Guardando...'
+                            : (esModificacion
+                                ? 'Actualizar Aporte'
+                                : 'Registrar Aporte'),
+                        icono: Icons.check_circle_outline_rounded,
+                        onPressed: guardandoAporte
+                            ? null
+                            : () async {
+                                if (!modalFormKey.currentState!.validate()) {
+                                  return;
+                                }
+                                if (clienteSeleccionado == null) return;
+
+                                final monto = double.parse(
+                                  valorAporteCtrl.text
+                                      .replaceAll(',', '.')
+                                      .trim(),
+                                );
+
+                                setModalState(() => guardandoAporte = true);
+
+                                try {
+                                  await vm.guardarAporteEnBorrador(
+                                    cliente: clienteSeleccionado!,
+                                    monto: monto,
+                                    aporteAEditar: aporteAEditar,
+                                  );
+
+                                  if (context.mounted) {
+                                    Navigator.pop(modalContext);
+                                    AppMessenger.showSuccessSnackBar(
+                                      context,
+                                      esModificacion
+                                          ? 'Aporte de ${_formatearMoneda(monto)} actualizado para ${clienteSeleccionado!.nombre}'
+                                          : 'Aporte de ${_formatearMoneda(monto)} registrado en borrador para ${clienteSeleccionado!.nombre}',
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (modalContext.mounted) {
+                                    setModalState(
+                                        () => guardandoAporte = false);
+                                    AppMessenger.showErrorSnackBar(
+                                      modalContext,
+                                      'Error al procesar aporte: $e',
+                                    );
+                                  }
+                                }
+                              },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   void _mostrarMenuPerfil(BuildContext context, Profile? profile) {
@@ -631,13 +944,11 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
               children: [
                 CircleAvatar(
                   radius: 28,
-                  backgroundImage:
-                      (profile?.avatarPath != null &&
+                  backgroundImage: (profile?.avatarPath != null &&
                           profile!.avatarPath.isNotEmpty)
                       ? AssetImage(profile.avatarPath)
                       : null,
-                  child:
-                      (profile?.avatarPath == null ||
+                  child: (profile?.avatarPath == null ||
                           profile!.avatarPath.isEmpty)
                       ? const Icon(Icons.person, size: 30)
                       : null,
@@ -739,6 +1050,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
               ),
               onPressed: () {
                 Navigator.pop(dialogContext);
+                context.read<ProfileViewModel>().limpiar();
                 Navigator.pushNamedAndRemoveUntil(
                   context,
                   '/',
@@ -800,624 +1112,496 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final vm = context.watch<InstrumentFormViewModel>();
+    final profileVm = context.watch<ProfileViewModel>();
+    final profile = profileVm.profile;
+    final imageProvider =
+        (profile?.avatarPath != null && profile!.avatarPath.isNotEmpty)
+            ? AssetImage(profile.avatarPath) as ImageProvider
+            : null;
 
     return PopScope(
-      canPop: !_huboCambiosPersistidos,
+      canPop: !vm.huboCambiosPersistidos,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
           Navigator.pop(context, true);
         }
       },
       child: Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            // ===============================================================
-            // 1. CAPA DE CONTENIDO: FORMULARIO DE INSTRUMENTO
-            // ===============================================================
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(width: _anchoBarraBase),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        AppHeaderTitle(
-                          titulo: _esEdicion
-                              ? 'Editar Instrumento'
-                              : 'Nuevo Instrumento',
-                          onBack: () => Navigator.pop(context, _huboCambiosPersistidos),
-                        ),
-                        Expanded(
-                          child: DefaultTabController(
-                            length: 3,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                // --- Barra de Pestañas Segmentada ---
-                                Container(
-                                  height: 42,
-                                  margin: const EdgeInsets.only(bottom: 14),
-                                  decoration: BoxDecoration(
-                                    color: colorScheme.surfaceContainerHighest
-                                        .withValues(alpha: 0.35),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: TabBar(
-                                    indicator: BoxDecoration(
-                                      color: colorScheme.primary,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    indicatorSize: TabBarIndicatorSize.tab,
-                                    dividerColor: Colors.transparent,
-                                    labelColor: Colors.white,
-                                    unselectedLabelColor:
-                                        colorScheme.onSurfaceVariant,
-                                    labelStyle: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                    unselectedLabelStyle: const TextStyle(
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 13,
-                                    ),
-                                    tabs: const [
-                                      Tab(text: 'Generalidades'),
-                                      Tab(text: 'Aportes'),
-                                      Tab(text: 'Resultados'),
-                                    ],
-                                  ),
-                                ),
-
-                                // --- Contenido de las Pestañas ---
-                                Expanded(
-                                  child: TabBarView(
-                                    physics: const BouncingScrollPhysics(),
-                                    children: [
-                                      // Tab 1: Generalidades (Formulario base)
-                                      SingleChildScrollView(
-                                        physics: const BouncingScrollPhysics(),
-                                        padding: const EdgeInsets.only(
-                                          top: 10.0,
-                                          bottom: 40.0,
-                                        ),
-                                        child: Form(
-                                          key: _formKey,
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
-                                            children: [
-                                  // --- Sección 1: Datos Base ---
-                                  AppTextField(
-                                    controller: _numeroCtrl,
-                                    label: 'Número de Instrumento / Folio',
-                                    hint: 'Ej. CDT-2024-001 o N° Contrato',
-                                    icono: Icons.tag_rounded,
-                                    validator: (val) {
-                                      if (val == null || val.trim().isEmpty) {
-                                        return 'Ingresa el número identificador';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 14),
-
-                                  // --- Fila: Entidad Financiera y Plazo ---
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // Entidad Financiera (Dropdown con colección 'banks', flex 5 / ~63%)
-                                      Expanded(
-                                        flex: 4,
-                                        child: AppDropdownField<String>(
-                                          label: 'Entidad Financiera',
-                                          hint: _cargandoBancos
-                                              ? 'Cargando...'
-                                              : 'Selecciona',
-                                          icono: Icons.account_balance_outlined,
-                                          isLoading: _cargandoBancos,
-                                          value: _entidadCtrl.text.isNotEmpty
-                                              ? _entidadCtrl.text
-                                              : null,
-                                          items: _generarItemsBancos(),
-                                          onChanged: (nuevaEntidad) {
-                                            setState(() {
-                                              _entidadCtrl.text =
-                                                  nuevaEntidad ?? '';
-                                            });
-                                          },
-                                          validator: (val) {
-                                            if (val == null ||
-                                                val.trim().isEmpty) {
-                                              return 'Selecciona la entidad';
-                                            }
-                                            return null;
-                                          },
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      // Plazo en Días (Compacto, máximo 3 dígitos, flex 3 / ~37%)
-                                      Expanded(
-                                        flex: 3,
-                                        child: AppTextField(
-                                          controller: _diasCtrl,
-                                          label: 'Plazo (Días)',
-                                          hint: 'Ej. 90',
-                                          icono: Icons.timelapse_rounded,
-                                          tipoTeclado: TextInputType.number,
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter
-                                                .digitsOnly,
-                                            LengthLimitingTextInputFormatter(3),
-                                          ],
-                                          validator: (val) {
-                                            if (val == null ||
-                                                val.trim().isEmpty) {
-                                              return 'Requerido';
-                                            }
-                                            final dias = int.tryParse(
-                                              val.trim(),
-                                            );
-                                            if (dias == null ||
-                                                dias <= 0 ||
-                                                dias > 999) {
-                                              return 'Máx 3 dígitos';
-                                            }
-                                            return null;
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 14),
-
-                                  // --- Fila: Fecha Apertura y Fecha Cierre ---
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // Fecha Apertura (Selector interactivo)
-                                      Expanded(
-                                        child: InkWell(
-                                          onTap: () =>
-                                              _seleccionarFechaApertura(
-                                                context,
-                                              ),
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                          child: InputDecorator(
-                                            decoration: InputDecoration(
-                                              labelText: 'Fecha Apertura',
-                                              prefixIcon: const Padding(
-                                                padding: EdgeInsets.only(
-                                                  left: 10,
-                                                  right: 4,
-                                                ),
-                                                child: Icon(
-                                                  Icons.calendar_today_outlined,
-                                                  size: 20,
-                                                ),
-                                              ),
-                                              prefixIconConstraints:
-                                                  const BoxConstraints(
-                                                    minWidth: 36,
-                                                    minHeight: 40,
-                                                  ),
-                                              border: OutlineInputBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              filled: true,
-                                              fillColor: Colors.white,
-                                              isDense: true,
-                                            ),
-                                            child: Text(
-                                              _formatearFecha(_fechaApertura),
-                                              style: TextStyle(
-                                                color: colorScheme.onSurface,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      // Fecha Cierre (Calculada automáticamente)
-                                      Expanded(
-                                        child: InputDecorator(
-                                          decoration: InputDecoration(
-                                            labelText: 'Fecha Cierre',
-                                            prefixIcon: Padding(
-                                              padding: const EdgeInsets.only(
-                                                left: 10,
-                                                right: 4,
-                                              ),
-                                              child: Icon(
-                                                Icons.event_available_rounded,
-                                                size: 20,
-                                                color: colorScheme.primary,
-                                              ),
-                                            ),
-                                            prefixIconConstraints:
-                                                const BoxConstraints(
-                                                  minWidth: 36,
-                                                  minHeight: 40,
-                                                ),
-                                            border: OutlineInputBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                            filled: true,
-                                            fillColor: colorScheme
-                                                .surfaceContainerHighest
-                                                .withValues(alpha: 0.3),
-                                            isDense: true,
-                                          ),
-                                          child: Text(
-                                            _formatearFecha(_fechaCierre),
-                                            style: TextStyle(
-                                              color: colorScheme.primary,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 14),
-
-                                  // --- Fila: Valor Invertido y Tasa I.E.A. ---
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // Entrada para el capital invertido (flex 3 / ~60%)
-                                      Expanded(
-                                        flex: 3,
-                                        child: AppTextField(
-                                          controller: _valorInvertidoCtrl,
-                                          label: 'Valor Invertido (\$)',
-                                          hint: 'Ej. 50000000',
-                                          icono: Icons.attach_money_rounded,
-                                          tipoTeclado:
-                                              const TextInputType.numberWithOptions(
-                                                decimal: true,
-                                              ),
-                                          validator: (val) {
-                                            if (val == null ||
-                                                double.tryParse(
-                                                      val
-                                                          .replaceAll(',', '.')
-                                                          .trim(),
-                                                    ) ==
-                                                    null) {
-                                              return 'Ingresa el capital invertido';
-                                            }
-                                            return null;
-                                          },
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      // Entrada para el porcentaje de tasa I.E.A. (flex 2 / ~40%)
-                                      Expanded(
-                                        flex: 2,
-                                        child: AppTextField(
-                                          controller: _tasaIeaCtrl,
-                                          label: '% Tasa I.E.A.',
-                                          hint: 'Ej. 11.50',
-                                          icono: Icons.percent_rounded,
-                                          tipoTeclado:
-                                              const TextInputType.numberWithOptions(
-                                                decimal: true,
-                                              ),
-                                          validator: (val) {
-                                            if (val == null ||
-                                                double.tryParse(
-                                                      val
-                                                          .replaceAll(',', '.')
-                                                          .trim(),
-                                                    ) ==
-                                                    null) {
-                                              return 'Ingresa una tasa válida';
-                                            }
-                                            return null;
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 14),
-
-                                  // --- Fila: Rendimiento Proyectado y Retención % ---
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // Entrada para el valor monetario de rendimiento proyectado (flex 3 / ~60%)
-                                      Expanded(
-                                        flex: 3,
-                                        child: AppTextField(
-                                          controller: _rendimientoTProyecCtrl,
-                                          label: 'Rendimiento T. Proyec. (\$)',
-                                          hint: 'Ej. 2500000',
-                                          icono: Icons.trending_up_rounded,
-                                          tipoTeclado:
-                                              const TextInputType.numberWithOptions(
-                                                decimal: true,
-                                              ),
-                                          validator: (val) {
-                                            if (val == null ||
-                                                double.tryParse(
-                                                      val
-                                                          .replaceAll(',', '.')
-                                                          .trim(),
-                                                    ) ==
-                                                    null) {
-                                              return 'Ingresa el rendimiento proyectado';
-                                            }
-                                            return null;
-                                          },
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      // Entrada para el porcentaje de retención (flex 2 / ~40%)
-                                      Expanded(
-                                        flex: 2,
-                                        child: AppTextField(
-                                          controller: _retencionPorcentajeCtrl,
-                                          label: 'Retención %',
-                                          hint: '4.00',
-                                          icono: Icons.price_check_rounded,
-                                          tipoTeclado:
-                                              const TextInputType.numberWithOptions(
-                                                decimal: true,
-                                              ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 18),
-
-                                  // --- Selector de Estado Operativo (Activo / Cerrado) ---
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(width: _anchoBarraBase),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          AppHeaderTitle(
+                            titulo: vm.esEdicion
+                                ? 'Editar Instrumento'
+                                : 'Nuevo Instrumento',
+                            onBack: () =>
+                                Navigator.pop(context, vm.huboCambiosPersistidos),
+                          ),
+                          Expanded(
+                            child: DefaultTabController(
+                              length: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
                                   Container(
-                                    padding: const EdgeInsets.all(12),
+                                    height: 42,
+                                    margin: const EdgeInsets.only(bottom: 14),
                                     decoration: BoxDecoration(
-                                      color: colorScheme.surface,
+                                      color: colorScheme.surfaceContainerHighest
+                                          .withValues(alpha: 0.35),
                                       borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: colorScheme.outline.withValues(alpha: 0.3),
-                                      ),
                                     ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Icon(
-                                              Icons.verified_outlined,
-                                              color: colorScheme.primary,
-                                              size: 20,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                'Estado Operativo',
-                                                style: theme.textTheme.bodyMedium?.copyWith(
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Row(
-                                          children: [
-                                            // 1. Botón interactivo para estado 'Borrador' (de primeras)
-                                            Expanded(
-                                              child: InkWell(
-                                                onTap: () => setState(() => _estado = 'Borrador'),
-                                                borderRadius: BorderRadius.circular(8),
-                                                child: AnimatedContainer(
-                                                  duration: const Duration(milliseconds: 150),
-                                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                                  decoration: BoxDecoration(
-                                                    color: _estado == 'Borrador'
-                                                        ? Colors.amber.withValues(alpha: 0.18)
-                                                        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                    border: Border.all(
-                                                      color: _estado == 'Borrador'
-                                                          ? Colors.amber.shade700
-                                                          : Colors.transparent,
-                                                      width: 1.5,
-                                                    ),
-                                                  ),
-                                                  alignment: Alignment.center,
-                                                  child: Text(
-                                                    'Borrador',
-                                                    style: TextStyle(
-                                                      color: _estado == 'Borrador'
-                                                          ? Colors.amber.shade800
-                                                          : colorScheme.onSurfaceVariant,
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 13,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            // 2. Botón interactivo para estado 'Activo'
-                                            Expanded(
-                                              child: InkWell(
-                                                onTap: () => setState(() => _estado = 'Activo'),
-                                                borderRadius: BorderRadius.circular(8),
-                                                child: AnimatedContainer(
-                                                  duration: const Duration(milliseconds: 150),
-                                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                                  decoration: BoxDecoration(
-                                                    color: _estado == 'Activo'
-                                                        ? Colors.green.withValues(alpha: 0.18)
-                                                        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                    border: Border.all(
-                                                      color: _estado == 'Activo'
-                                                          ? Colors.green
-                                                          : Colors.transparent,
-                                                      width: 1.5,
-                                                    ),
-                                                  ),
-                                                  alignment: Alignment.center,
-                                                  child: Text(
-                                                    'Activo',
-                                                    style: TextStyle(
-                                                      color: _estado == 'Activo'
-                                                          ? Colors.green.shade800
-                                                          : colorScheme.onSurfaceVariant,
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 13,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            // 3. Botón interactivo para estado 'Cerrado'
-                                            Expanded(
-                                              child: InkWell(
-                                                onTap: () => setState(() => _estado = 'Cerrado'),
-                                                borderRadius: BorderRadius.circular(8),
-                                                child: AnimatedContainer(
-                                                  duration: const Duration(milliseconds: 150),
-                                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                                  decoration: BoxDecoration(
-                                                    color: _estado == 'Cerrado'
-                                                        ? Colors.grey.withValues(alpha: 0.22)
-                                                        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                    border: Border.all(
-                                                      color: _estado == 'Cerrado'
-                                                          ? Colors.grey.shade600
-                                                          : Colors.transparent,
-                                                      width: 1.5,
-                                                    ),
-                                                  ),
-                                                  alignment: Alignment.center,
-                                                  child: Text(
-                                                    'Cerrado',
-                                                    style: TextStyle(
-                                                      color: _estado == 'Cerrado'
-                                                          ? Colors.grey.shade800
-                                                          : colorScheme.onSurfaceVariant,
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 13,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                    child: TabBar(
+                                      indicator: BoxDecoration(
+                                        color: colorScheme.primary,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      indicatorSize: TabBarIndicatorSize.tab,
+                                      dividerColor: Colors.transparent,
+                                      labelColor: Colors.white,
+                                      unselectedLabelColor:
+                                          colorScheme.onSurfaceVariant,
+                                      labelStyle: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                      unselectedLabelStyle: const TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 13,
+                                      ),
+                                      tabs: const [
+                                        Tab(text: 'Generalidades'),
+                                        Tab(text: 'Aportes'),
+                                        Tab(text: 'Resultados'),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: 14),
-
-                                  // --- Observación (2 renglones de alto fijo) ---
-                                  AppTextField(
-                                    controller: _observacionCtrl,
-                                    label: 'Observación',
-                                    hint:
-                                        'Comentarios sobre la colocación o condiciones...',
-                                    icono: Icons.notes_rounded,
-                                    tipoTeclado: TextInputType.multiline,
-                                    minLines: 2,
-                                    maxLines: 2,
-                                  ),
-                                  const SizedBox(height: 28),
-
-                                  // --- Botón Guardar / Actualizar ---
-                                  AppButton(
-                                    texto: _guardando
-                                        ? 'Guardando...'
-                                        : (_esEdicion
-                                              ? 'Guardar Cambios'
-                                              : 'Registrar Instrumento'),
-                                    icono: Icons.check_circle_outline_rounded,
-                                    onPressed: _guardando
-                                        ? null
-                                        : _guardarInstrumento,
+                                  Expanded(
+                                    child: TabBarView(
+                                      physics: const BouncingScrollPhysics(),
+                                      children: [
+                                        _buildTabGeneralidades(
+                                          context,
+                                          vm: vm,
+                                          theme: theme,
+                                          colorScheme: colorScheme,
+                                        ),
+                                        _buildTabAportes(context, vm),
+                                        _buildTabResultados(context, vm),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                           ),
-
-                          // Tab 2: Aportes
-                          _buildTabAportes(context),
-
-                          // Tab 3: Resultados
-                          _buildTabResultados(context),
                         ],
                       ),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+              AppSidebarNavigation(
+                anchoBarra: _anchoBarraBase,
+                insigniaFlotante: AppFloatingProfileBadge(
+                  proveedorImagen: imageProvider,
+                  onTap: () => _mostrarMenuPerfil(context, profile),
+                ),
+                seccionPestanas: AppFolderTabBar(
+                  items: _obtenerItemsPestanas(context),
+                  indiceSeleccionado: 1,
+                  anchoBarra: _anchoBarraBase,
+                ),
+                pieAcciones: AppSidebarIconButton(
+                  icono: Icons.logout_rounded,
+                  esDestructivo: true,
+                  mensajeTooltip: 'Cerrar sesión',
+                  onTap: () => _confirmarCerrarSesion(context),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabGeneralidades(
+    BuildContext context, {
+    required InstrumentFormViewModel vm,
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+  }) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(top: 10.0, bottom: 40.0),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AppTextField(
+              controller: _numeroCtrl,
+              label: 'Número de Instrumento / Folio',
+              hint: 'Ej. CDT-2024-001 o N° Contrato',
+              icono: Icons.tag_rounded,
+              validator: (val) {
+                if (val == null || val.trim().isEmpty) {
+                  return 'Ingresa el número identificador';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 4,
+                  child: AppDropdownField<String>(
+                    label: 'Entidad Financiera',
+                    hint: vm.cargandoBancos ? 'Cargando...' : 'Selecciona',
+                    icono: Icons.account_balance_outlined,
+                    isLoading: vm.cargandoBancos,
+                    value:
+                        _entidadCtrl.text.isNotEmpty ? _entidadCtrl.text : null,
+                    items: _generarItemsBancos(vm),
+                    onChanged: (nuevaEntidad) {
+                      setState(() {
+                        _entidadCtrl.text = nuevaEntidad ?? '';
+                      });
+                    },
+                    validator: (val) {
+                      if (val == null || val.trim().isEmpty) {
+                        return 'Selecciona la entidad';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 3,
+                  child: AppTextField(
+                    controller: _diasCtrl,
+                    label: 'Plazo (Días)',
+                    hint: 'Ej. 90',
+                    icono: Icons.timelapse_rounded,
+                    tipoTeclado: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(3),
+                    ],
+                    validator: (val) {
+                      if (val == null || val.trim().isEmpty) {
+                        return 'Requerido';
+                      }
+                      final dias = int.tryParse(val.trim());
+                      if (dias == null || dias <= 0 || dias > 999) {
+                        return 'Máx 3 dígitos';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => _seleccionarFechaApertura(context, vm),
+                    borderRadius: BorderRadius.circular(12),
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Fecha Apertura',
+                        prefixIcon: const Padding(
+                          padding: EdgeInsets.only(left: 10, right: 4),
+                          child: Icon(Icons.calendar_today_outlined, size: 20),
+                        ),
+                        prefixIconConstraints: const BoxConstraints(
+                          minWidth: 36,
+                          minHeight: 40,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        isDense: true,
+                      ),
+                      child: Text(
+                        _formatearFecha(vm.fechaApertura),
+                        style: TextStyle(color: colorScheme.onSurface),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Fecha Cierre',
+                      prefixIcon: Padding(
+                        padding: const EdgeInsets.only(left: 10, right: 4),
+                        child: Icon(
+                          Icons.event_available_rounded,
+                          size: 20,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                      prefixIconConstraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 40,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.3),
+                      isDense: true,
+                    ),
+                    child: Text(
+                      _formatearFecha(vm.fechaCierre),
+                      style: TextStyle(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: AppTextField(
+                    controller: _valorInvertidoCtrl,
+                    label: 'Valor Invertido (\$)',
+                    hint: 'Ej. 50000000',
+                    icono: Icons.attach_money_rounded,
+                    tipoTeclado: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: (val) {
+                      if (val == null ||
+                          double.tryParse(val.replaceAll(',', '.').trim()) ==
+                              null) {
+                        return 'Ingresa el capital invertido';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: AppTextField(
+                    controller: _tasaIeaCtrl,
+                    label: '% Tasa I.E.A.',
+                    hint: 'Ej. 11.50',
+                    icono: Icons.percent_rounded,
+                    tipoTeclado: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: (val) {
+                      if (val == null ||
+                          double.tryParse(val.replaceAll(',', '.').trim()) ==
+                              null) {
+                        return 'Ingresa una tasa válida';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: AppTextField(
+                    controller: _rendimientoTProyecCtrl,
+                    label: 'Rendimiento T. Proyec. (\$)',
+                    hint: 'Ej. 2500000',
+                    icono: Icons.trending_up_rounded,
+                    tipoTeclado: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: (val) {
+                      if (val == null ||
+                          double.tryParse(val.replaceAll(',', '.').trim()) ==
+                              null) {
+                        return 'Ingresa el rendimiento proyectado';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: AppTextField(
+                    controller: _retencionPorcentajeCtrl,
+                    label: 'Retención %',
+                    hint: '4.00',
+                    icono: Icons.price_check_rounded,
+                    tipoTeclado: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: colorScheme.outline.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.verified_outlined,
+                        color: colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Estado Operativo',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _buildBotonEstado(
+                        vm: vm,
+                        valorEstado: 'Borrador',
+                        colorActivo: Colors.amber,
+                        colorTextoActivo: Colors.amber.shade800,
+                        colorScheme: colorScheme,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildBotonEstado(
+                        vm: vm,
+                        valorEstado: 'Activo',
+                        colorActivo: Colors.green,
+                        colorTextoActivo: Colors.green.shade800,
+                        colorScheme: colorScheme,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildBotonEstado(
+                        vm: vm,
+                        valorEstado: 'Cerrado',
+                        colorActivo: Colors.grey,
+                        colorTextoActivo: Colors.grey.shade800,
+                        colorScheme: colorScheme,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            AppTextField(
+              controller: _observacionCtrl,
+              label: 'Observación',
+              hint: 'Comentarios sobre la colocación o condiciones...',
+              icono: Icons.notes_rounded,
+              tipoTeclado: TextInputType.multiline,
+              minLines: 2,
+              maxLines: 2,
+            ),
+            const SizedBox(height: 28),
+            AppButton(
+              texto: vm.guardando
+                  ? 'Guardando...'
+                  : (vm.esEdicion
+                      ? 'Guardar Cambios'
+                      : 'Registrar Instrumento'),
+              icono: Icons.check_circle_outline_rounded,
+              onPressed:
+                  vm.guardando ? null : () => _guardarInstrumento(vm),
             ),
           ],
         ),
       ),
-    ),
-  ],
-),
+    );
+  }
 
-            // ===============================================================
-            // 2. NAVEGACIÓN LATERAL MODULAR DEL CORE
-            // Solapa "Instrumentos" activa (índice 1)
-            // ===============================================================
-            AppSidebarNavigation(
-              anchoBarra: _anchoBarraBase,
-              insigniaFlotante: FutureBuilder<Profile>(
-                future: _profileFuture,
-                builder: (context, snapshot) {
-                  final profile = snapshot.data;
-                  final imageProvider =
-                      (profile?.avatarPath != null &&
-                          profile!.avatarPath.isNotEmpty)
-                      ? AssetImage(profile.avatarPath) as ImageProvider
-                      : null;
-
-                  return AppFloatingProfileBadge(
-                    proveedorImagen: imageProvider,
-                    onTap: () => _mostrarMenuPerfil(context, profile),
-                  );
-                },
-              ),
-              seccionPestanas: AppFolderTabBar(
-                items: _obtenerItemsPestanas(context),
-                indiceSeleccionado: 1,
-                anchoBarra: _anchoBarraBase,
-              ),
-              pieAcciones: AppSidebarIconButton(
-                icono: Icons.logout_rounded,
-                esDestructivo: true,
-                mensajeTooltip: 'Cerrar sesión',
-                onTap: () => _confirmarCerrarSesion(context),
-              ),
+  Widget _buildBotonEstado({
+    required InstrumentFormViewModel vm,
+    required String valorEstado,
+    required Color colorActivo,
+    required Color colorTextoActivo,
+    required ColorScheme colorScheme,
+  }) {
+    final seleccionado = vm.estado == valorEstado;
+    return Expanded(
+      child: InkWell(
+        onTap: () => vm.seleccionarEstado(valorEstado),
+        borderRadius: BorderRadius.circular(8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: seleccionado
+                ? colorActivo.withValues(alpha: 0.18)
+                : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: seleccionado ? colorActivo : Colors.transparent,
+              width: 1.5,
             ),
-          ],
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            valorEstado,
+            style: TextStyle(
+              color:
+                  seleccionado ? colorTextoActivo : colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -1455,487 +1639,9 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     );
   }
 
-  /// Abre la hoja modal emergente para registrar o modificar un aporte en borrador (sin descontar saldo aún).
-  Future<void> _abrirModalNuevoAporte(
-    BuildContext context, {
-    InstrumentContribution? aporteAEditar,
-  }) async {
-    // Restricción 4: Solo se permite gestionar aportes mientras el instrumento esté guardado en Borrador
-    if (_estado != 'Borrador' || _estadoPersistido != 'Borrador') {
-      AppMessenger.showInfoSnackBar(
-        context,
-        'Los aportes solo pueden gestionarse mientras el instrumento esté guardado en estado "Borrador"',
-      );
-      return;
-    }
-
-    if (!_esEdicion || widget.instrument == null) {
-      AppMessenger.showInfoSnackBar(
-        context,
-        'Debes registrar el instrumento antes de asociar aportes de clientes',
-      );
-      return;
-    }
-
-    final esModificacion = aporteAEditar != null;
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final valorAporteCtrl = TextEditingController(
-      text: esModificacion ? aporteAEditar.valor.toStringAsFixed(0) : '',
-    );
-    final modalFormKey = GlobalKey<FormState>();
-
-    List<Client> clientesDisponibles = [];
-    bool cargandoClientes = true;
-    bool consultaIniciada = false;
-    Client? clienteSeleccionado;
-    bool guardandoAporte = false;
-    String? errorCarga;
-
-    await showAppModalBottomSheet(
-      context,
-      child: StatefulBuilder(
-        builder: (modalContext, setModalState) {
-          // Se condiciona la consulta a 'consultaIniciada' para evitar disparos asíncronos concurrentes
-          // en cada frame de renderizado del modal, previniendo sobrecarga del hilo principal y ANR.
-          if (!consultaIniciada && cargandoClientes && errorCarga == null) {
-            consultaIniciada = true;
-            _cargarClientesDisponibles().then((todosLosClientes) {
-              if (modalContext.mounted) {
-                setModalState(() {
-                  if (esModificacion) {
-                    // En edición el cliente se mantiene fijo y se precarga su entidad
-                    clienteSeleccionado = todosLosClientes.firstWhere(
-                      (c) => c.id == aporteAEditar.clienteId,
-                      orElse: () => Client(
-                        id: aporteAEditar.clienteId,
-                        nombre: aporteAEditar.clienteNombre,
-                        documento: '',
-                        correo: '',
-                        telefono: '',
-                      ),
-                    );
-                    clientesDisponibles = [clienteSeleccionado!];
-                  } else {
-                    // Restricción 1: Un mismo cliente no puede aportar más de una vez por instrumento
-                    final idsClientesConAporte =
-                        _aportes.map((a) => a.clienteId).toSet();
-                    clientesDisponibles = todosLosClientes
-                        .where((c) =>
-                            c.estado == 'Activo' &&
-                            !idsClientesConAporte.contains(c.id))
-                        .toList();
-                  }
-                  cargandoClientes = false;
-                });
-              }
-            }).catchError((err) {
-              if (modalContext.mounted) {
-                setModalState(() {
-                  errorCarga = 'No fue posible consultar clientes: $err';
-                  cargandoClientes = false;
-                });
-              }
-            });
-          }
-
-          // En Borrador ningún aporte ha descontado saldo todavía, por lo que el máximo
-          // siempre corresponde directamente al saldoDisponible actual del cliente.
-          final disponibleMaximo = clienteSeleccionado?.saldoDisponible ?? 0.0;
-
-          return Material(
-            color: Colors.transparent,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Form(
-                key: modalFormKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Encabezado del modal
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(
-                            esModificacion
-                                ? Icons.edit_note_rounded
-                                : Icons.savings_outlined,
-                            color: colorScheme.primary,
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                esModificacion
-                                    ? 'Modificar Aporte de Inversión'
-                                    : 'Nuevo Aporte de Inversión',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                'Instrumento: ${widget.instrument!.numero}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded),
-                          onPressed: () => Navigator.pop(modalContext),
-                          tooltip: 'Cerrar',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Divider(height: 1),
-                    const SizedBox(height: 16),
-
-                    if (cargandoClientes)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24.0),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    else if (errorCarga != null)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colorScheme.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          errorCarga!,
-                          style: TextStyle(
-                            color: colorScheme.error,
-                            fontSize: 13,
-                          ),
-                        ),
-                      )
-                    else if (!esModificacion && clientesDisponibles.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest
-                              .withValues(alpha: 0.35),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline_rounded,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 10),
-                            const Expanded(
-                              child: Text(
-                                'Todos los clientes activos ya cuentan con un aporte registrado en este instrumento.',
-                                style: TextStyle(fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else ...[
-                      // 1. Selector o Visualizador de Cliente
-                      if (esModificacion)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: colorScheme.outline.withValues(alpha: 0.2),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.person_rounded,
-                                color: colorScheme.primary,
-                                size: 22,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Cliente Inversor',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: colorScheme.onSurfaceVariant,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${clienteSeleccionado?.nombre ?? aporteAEditar.clienteNombre}${clienteSeleccionado?.documento.isNotEmpty == true ? " - ${clienteSeleccionado!.documento}" : ""}',
-                                      style:
-                                          theme.textTheme.bodyMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        AppDropdownField<String>(
-                          label: 'Cliente Inversor *',
-                          hint: 'Selecciona el cliente...',
-                          icono: Icons.person_search_rounded,
-                          value: clientesDisponibles.any((c) => c.id == clienteSeleccionado?.id)
-                              ? clienteSeleccionado?.id
-                              : null,
-                          items: clientesDisponibles.map((c) {
-                            final docInfo = c.documento.isNotEmpty
-                                ? ' - ${c.documento}'
-                                : '';
-                            return DropdownMenuItem<String>(
-                              value: c.id,
-                              child: Text(
-                                '${c.nombre}$docInfo',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (id) {
-                            setModalState(() {
-                              // Búsqueda defensiva para evitar StateError al seleccionar un cliente
-                              clienteSeleccionado = clientesDisponibles.cast<Client?>().firstWhere(
-                                    (c) => c?.id == id,
-                                    orElse: () => null,
-                                  );
-                            });
-                          },
-                          validator: (val) {
-                            if (val == null || val.trim().isEmpty) {
-                              return 'Selecciona un cliente';
-                            }
-                            return null;
-                          },
-                        ),
-                      const SizedBox(height: 14),
-
-                      // 2. Tarjeta Informativa de Saldo Disponible
-                      if (clienteSeleccionado != null) ...[
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: disponibleMaximo > 0
-                                ? Colors.green.withValues(alpha: 0.1)
-                                : Colors.amber.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: disponibleMaximo > 0
-                                  ? Colors.green.withValues(alpha: 0.35)
-                                  : Colors.amber.shade700,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                disponibleMaximo > 0
-                                    ? Icons.account_balance_wallet_outlined
-                                    : Icons.warning_amber_rounded,
-                                color: disponibleMaximo > 0
-                                    ? Colors.green.shade800
-                                    : Colors.amber.shade900,
-                                size: 24,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      esModificacion
-                                          ? 'Disponible Máximo para este Aporte'
-                                          : (disponibleMaximo > 0
-                                              ? 'Saldo Disponible del Cliente'
-                                              : 'Sin Saldo Disponible'),
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: disponibleMaximo > 0
-                                            ? Colors.green.shade900
-                                            : Colors.amber.shade900,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      _formatearMoneda(disponibleMaximo),
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: disponibleMaximo > 0
-                                            ? Colors.green.shade900
-                                            : Colors.amber.shade900,
-                                      ),
-                                    ),
-                                    if (esModificacion) ...[
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        '(Aporte actual en borrador: ${_formatearMoneda(aporteAEditar.valor)} • aún no descontado)',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-
-                      // 3. Valor a Invertir
-                      AppTextField(
-                        controller: valorAporteCtrl,
-                        label: 'Valor a Invertir (\$)',
-                        hint: 'Ej. 5000000',
-                        icono: Icons.attach_money_rounded,
-                        tipoTeclado: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Ingresa el valor a invertir';
-                          }
-                          final monto =
-                              double.tryParse(val.replaceAll(',', '.').trim());
-                          if (monto == null || monto <= 0) {
-                            return 'Ingresa un valor mayor a cero';
-                          }
-                          if (clienteSeleccionado != null &&
-                              monto > disponibleMaximo) {
-                            return 'Supera el disponible (${_formatearMoneda(disponibleMaximo)})';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 22),
-
-                      // 4. Botón de Confirmación
-                      AppButton(
-                        texto: guardandoAporte
-                            ? 'Guardando...'
-                            : (esModificacion
-                                ? 'Actualizar Aporte'
-                                : 'Registrar Aporte'),
-                        icono: Icons.check_circle_outline_rounded,
-                        onPressed: guardandoAporte
-                            ? null
-                            : () async {
-                                if (!modalFormKey.currentState!.validate()) {
-                                  return;
-                                }
-                                if (clienteSeleccionado == null) return;
-
-                                final monto = double.parse(
-                                  valorAporteCtrl.text
-                                      .replaceAll(',', '.')
-                                      .trim(),
-                                );
-
-                                setModalState(() => guardandoAporte = true);
-
-                                try {
-                                  if (esModificacion) {
-                                    final aporteActualizado =
-                                        aporteAEditar.copyWith(
-                                      valor: monto,
-                                      fecha: DateTime.now(),
-                                    );
-                                    final nuevosAportes = _aportes
-                                        .map((a) => a.clienteId ==
-                                                aporteAEditar.clienteId
-                                            ? aporteActualizado
-                                            : a)
-                                        .toList();
-
-                                    await _persistirAportesEnBorrador(
-                                      nuevosAportes,
-                                    );
-
-                                    if (context.mounted) {
-                                      Navigator.pop(modalContext);
-                                      AppMessenger.showSuccessSnackBar(
-                                        context,
-                                        'Aporte de ${_formatearMoneda(monto)} actualizado para ${clienteSeleccionado!.nombre}',
-                                      );
-                                    }
-                                  } else {
-                                    final nuevoAporte = InstrumentContribution(
-                                      clienteId: clienteSeleccionado!.id,
-                                      clienteNombre:
-                                          clienteSeleccionado!.nombre,
-                                      valor: monto,
-                                      fecha: DateTime.now(),
-                                    );
-                                    final nuevosAportes = [
-                                      nuevoAporte,
-                                      ..._aportes,
-                                    ];
-
-                                    await _persistirAportesEnBorrador(
-                                      nuevosAportes,
-                                    );
-
-                                    if (context.mounted) {
-                                      Navigator.pop(modalContext);
-                                      AppMessenger.showSuccessSnackBar(
-                                        context,
-                                        'Aporte de ${_formatearMoneda(monto)} registrado en borrador para ${clienteSeleccionado!.nombre}',
-                                      );
-                                    }
-                                  }
-                                } catch (e) {
-                                  if (modalContext.mounted) {
-                                    setModalState(
-                                        () => guardandoAporte = false);
-                                    AppMessenger.showErrorSnackBar(
-                                      modalContext,
-                                      'Error al procesar aporte: $e',
-                                    );
-                                  }
-                                }
-                              },
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildListaAportesVisual({
     required BuildContext context,
+    required InstrumentFormViewModel vm,
     required List<InstrumentContribution> aportes,
     required bool puedeGestionar,
   }) {
@@ -1959,7 +1665,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                _estadoPersistido == 'Borrador'
+                vm.estadoPersistido == 'Borrador'
                     ? 'No hay aportes registrados en este instrumento todavía.'
                     : 'No hay transacciones de inversión vinculadas a este instrumento todavía.',
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -2099,6 +1805,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                         InkWell(
                           onTap: () => _abrirModalNuevoAporte(
                             context,
+                            vm,
                             aporteAEditar: aporte,
                           ),
                           borderRadius: BorderRadius.circular(6),
@@ -2129,7 +1836,8 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                           ),
                         ),
                         InkWell(
-                          onTap: () => _confirmarEliminarAporte(context, aporte),
+                          onTap: () =>
+                              _confirmarEliminarAporte(context, vm, aporte),
                           borderRadius: BorderRadius.circular(6),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -2169,15 +1877,11 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
     );
   }
 
-  /// Construye la pestaña 2 (Aportes):
-  /// Muestra y permite gestionar los aportes del instrumento en estado Borrador (sin descontar saldo aún)
-  /// o visualizar en solo lectura los aportes confirmados cuando está Activo/Cerrado.
-  Widget _buildTabAportes(BuildContext context) {
+  Widget _buildTabAportes(BuildContext context, InstrumentFormViewModel vm) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final esBorradorSeleccionado = _estado == 'Borrador';
-    final puedeGestionarAportes =
-        _esEdicion && esBorradorSeleccionado && _estadoPersistido == 'Borrador';
+    final esBorradorSeleccionado = vm.estado == 'Borrador';
+    final puedeGestionarAportes = vm.puedeGestionarAportes;
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -2205,7 +1909,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
               if (puedeGestionarAportes) ...[
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
-                  onPressed: () => _abrirModalNuevoAporte(context),
+                  onPressed: () => _abrirModalNuevoAporte(context, vm),
                   icon: const Icon(Icons.add_rounded, size: 16),
                   label: const Text('Agregar Aporte'),
                   style: ElevatedButton.styleFrom(
@@ -2225,7 +1929,6 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
             ],
           ),
           const SizedBox(height: 12),
-
           if (puedeGestionarAportes)
             Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -2257,7 +1960,9 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                 ],
               ),
             )
-          else if (_esEdicion && esBorradorSeleccionado && _estadoPersistido != 'Borrador')
+          else if (vm.esEdicion &&
+              esBorradorSeleccionado &&
+              vm.estadoPersistido != 'Borrador')
             Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -2289,7 +1994,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                 ],
               ),
             )
-          else if (_esEdicion && !esBorradorSeleccionado)
+          else if (vm.esEdicion && !esBorradorSeleccionado)
             Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -2310,7 +2015,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'El instrumento está en estado "$_estado". Los aportes solo pueden agregarse, modificarse o eliminarse mientras esté en "Borrador".',
+                      'El instrumento está en estado "${vm.estado}". Los aportes solo pueden agregarse, modificarse o eliminarse mientras esté en "Borrador".',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.amber.shade900,
@@ -2321,8 +2026,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                 ],
               ),
             ),
-
-          if (!_esEdicion)
+          if (!vm.esEdicion)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -2350,78 +2054,39 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                 ],
               ),
             )
-          else if (_aportes.isNotEmpty || _estadoPersistido == 'Borrador')
-            _buildListaAportesVisual(
-              context: context,
-              aportes: _aportes,
-              puedeGestionar: puedeGestionarAportes,
+          else if (vm.cargandoAportesLegacy)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24.0),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (vm.errorAportesLegacy != null)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: colorScheme.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'Error al consultar aportes asociados: ${vm.errorAportesLegacy}',
+                style: TextStyle(
+                  color: colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
             )
           else
-            FutureBuilder<List<Transaction>>(
-              future: _transaccionesAsociadasFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24.0),
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
-
-                if (snapshot.hasError) {
-                  return Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: colorScheme.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'Error al consultar aportes asociados: ${snapshot.error}',
-                      style: TextStyle(
-                        color: colorScheme.error,
-                        fontSize: 12,
-                      ),
-                    ),
-                  );
-                }
-
-                final todas = snapshot.data ?? [];
-                final instId = widget.instrument!.id;
-                final instNum = widget.instrument!.numero;
-
-                final legacyAportes = todas
-                    .where((t) {
-                      final esInversion = t.tipo == TransactionType.inversion;
-                      final ref = t.instrumentoId ?? '';
-                      final coincide =
-                          ref.isNotEmpty && (ref == instId || ref == instNum);
-                      return esInversion && coincide;
-                    })
-                    .map(
-                      (tx) => InstrumentContribution(
-                        clienteId: tx.clienteId,
-                        clienteNombre: tx.clienteNombre,
-                        valor: tx.valor,
-                        fecha: tx.fecha,
-                        transaccionId: tx.id,
-                      ),
-                    )
-                    .toList();
-
-                return _buildListaAportesVisual(
-                  context: context,
-                  aportes: legacyAportes,
-                  puedeGestionar: false,
-                );
-              },
+            _buildListaAportesVisual(
+              context: context,
+              vm: vm,
+              aportes: vm.aportesMostrados,
+              puedeGestionar: puedeGestionarAportes,
             ),
         ],
       ),
     );
   }
 
-  /// Construye la pestaña 3 (Resultados):
-  /// - Resumen Financiero Calculado reactivo (Valor Recibido, Rendimientos Brutos, Retención $, Valor Final Rend.)
-  Widget _buildTabResultados(BuildContext context) {
+  Widget _buildTabResultados(BuildContext context, InstrumentFormViewModel vm) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -2431,9 +2096,6 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ===============================================================
-          // BLOQUE FINANCIERO REACTIVO: CÁLCULOS EN TIEMPO REAL
-          // ===============================================================
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -2472,36 +2134,28 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                   ],
                 ),
                 const SizedBox(height: 14),
-
-                // 1. Valor Recibido
                 _buildFilaMetrica(
                   titulo: 'Valor Recibido:',
-                  valor: _formatearMoneda(_valorRecibido),
+                  valor: _formatearMoneda(vm.valorRecibido),
                   colorTexto: colorScheme.onSurface,
                   esNegrita: true,
                 ),
                 const Divider(height: 18),
-
-                // 2. Rendimientos
                 _buildFilaMetrica(
                   titulo: 'Rendimientos Brutos:',
-                  valor: _formatearMoneda(_rendimientos),
+                  valor: _formatearMoneda(vm.rendimientos),
                   colorTexto: colorScheme.primary,
                   esNegrita: true,
                 ),
                 const Divider(height: 18),
-
-                // 3. Retención en Fuente ($)
                 _buildFilaMetrica(
                   titulo:
-                      'Retención (${_retencionPorcentaje.toStringAsFixed(2)}%):',
-                  valor: _formatearMoneda(_retencionValor),
+                      'Retención (${vm.retencionPorcentaje.toStringAsFixed(2)}%):',
+                  valor: _formatearMoneda(vm.retencionValor),
                   colorTexto: colorScheme.error,
                   esNegrita: true,
                 ),
                 const SizedBox(height: 14),
-
-                // 4. Valor Final Rend. (Destacado)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
@@ -2542,7 +2196,7 @@ class _InstrumentFormScreenState extends State<InstrumentFormScreen> {
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          _formatearMoneda(_valorFinalRend),
+                          _formatearMoneda(vm.valorFinalRend),
                           style: TextStyle(
                             color: Colors.green.shade800,
                             fontWeight: FontWeight.bold,
