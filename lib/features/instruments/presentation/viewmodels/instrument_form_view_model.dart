@@ -292,6 +292,11 @@ class InstrumentFormViewModel extends ChangeNotifier {
     required double tasaIea,
     required String observacion,
   }) async {
+    final numeroLimpio = numero.trim();
+    if (numeroLimpio.isEmpty) {
+      throw Exception('El número del instrumento es obligatorio.');
+    }
+
     _guardando = true;
     _notificar();
 

@@ -295,5 +295,31 @@ void main() {
       );
       expect(vm.guardando, isFalse);
     });
+
+    test('guardarInstrumento exige numero obligatorio y no persiste si está vacío', () async {
+      final instRepo = _FakeInstRepo();
+      final txRepo = _FakeTxRepo([]);
+      final vm = InstrumentFormViewModel(
+        userId: 'u1',
+        saveInstrumentUseCase: SaveInstrumentUseCase(instRepo),
+        getBanksUseCase: GetBanksUseCase(_FakeBankRepo()),
+        getTransactionsUseCase: GetTransactionsUseCase(txRepo),
+        getClientsUseCase: GetClientsUseCase(_FakeClientRepo([], txRepo)),
+        saveTransactionUseCase: SaveTransactionUseCase(txRepo),
+        deleteTransactionUseCase: DeleteTransactionUseCase(txRepo),
+      );
+
+      await expectLater(
+        () => vm.guardarInstrumento(
+          numero: '   ',
+          entidad: 'Bancolombia',
+          tasaIea: 11.0,
+          observacion: '',
+        ),
+        throwsException,
+      );
+      expect(instRepo.items, isEmpty);
+      expect(vm.guardando, isFalse);
+    });
   });
 }

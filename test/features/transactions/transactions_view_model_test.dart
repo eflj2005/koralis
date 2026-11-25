@@ -2,6 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:koralis_app/features/clients/domain/entities/client.dart';
 import 'package:koralis_app/features/clients/domain/repositories/client_repository.dart';
 import 'package:koralis_app/features/clients/domain/usecases/get_clients_usecase.dart';
+import 'package:koralis_app/features/instruments/domain/entities/instrument.dart';
+import 'package:koralis_app/features/instruments/domain/repositories/instrument_repository.dart';
+import 'package:koralis_app/features/instruments/domain/usecases/get_instruments_usecase.dart';
 import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
 import 'package:koralis_app/features/transactions/domain/repositories/transaction_repository.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/delete_transaction_usecase.dart';
@@ -44,6 +47,20 @@ class _FakeClientRepo implements ClientRepository {
 
   @override
   Future<void> deleteClient(String id) async {}
+}
+
+class _FakeInstrumentRepo implements InstrumentRepository {
+  final List<Instrument> items;
+  _FakeInstrumentRepo(this.items);
+
+  @override
+  Future<List<Instrument>> getInstruments() async => items;
+
+  @override
+  Future<void> saveInstrument(Instrument instrument) async {}
+
+  @override
+  Future<void> deleteInstrument(String id) async {}
 }
 
 void main() {
@@ -168,6 +185,51 @@ void main() {
       expect(nuevoSaldo, equals(-1500000.0));
       expect(vm.transacciones.length, equals(1));
       expect(vm.transacciones.single.id, equals('t2'));
+    });
+
+    test('obtenerNumeroInstrumento retorna numero si existe y null si falta o no hay coincidencia', () async {
+      final inst = Instrument(
+        id: 'inst-abc',
+        numero: 'CDT-2026-099',
+        entidad: 'Bancolombia',
+        fechaApertura: DateTime(2026, 5, 1),
+        dias: 90,
+        tasaIea: 11.0,
+        valorInvertido: 5000000,
+        rendimientoTProyec: 150000,
+        estado: 'Activo',
+      );
+      final instSinNumero = Instrument(
+        id: 'inst-vacio',
+        numero: '   ',
+        entidad: 'Davivienda',
+        fechaApertura: DateTime(2026, 5, 1),
+        dias: 90,
+        tasaIea: 11.0,
+        valorInvertido: 5000000,
+        rendimientoTProyec: 150000,
+        estado: 'Activo',
+      );
+
+      final txRepo = _FakeTxRepo([]);
+      final vm = TransactionsViewModel(
+        userId: 'u1',
+        getTransactionsUseCase: GetTransactionsUseCase(txRepo),
+        deleteTransactionUseCase: DeleteTransactionUseCase(txRepo),
+        getClientsUseCase: GetClientsUseCase(_FakeClientRepo([cli1])),
+        getInstrumentsUseCase: GetInstrumentsUseCase(
+          _FakeInstrumentRepo([inst, instSinNumero]),
+        ),
+      );
+
+      await vm.cargarDatos();
+
+      expect(vm.obtenerNumeroInstrumento('inst-abc'), equals('CDT-2026-099'));
+      expect(vm.obtenerNumeroInstrumento('  inst-abc  '), equals('CDT-2026-099'));
+      expect(vm.obtenerNumeroInstrumento('inst-desconocido'), isNull);
+      expect(vm.obtenerNumeroInstrumento('inst-vacio'), isNull);
+      expect(vm.obtenerNumeroInstrumento(''), isNull);
+      expect(vm.obtenerNumeroInstrumento(null), isNull);
     });
   });
 }

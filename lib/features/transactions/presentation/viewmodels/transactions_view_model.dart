@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:koralis_app/features/clients/data/repositories/client_repository_impl.dart';
 import 'package:koralis_app/features/clients/domain/entities/client.dart';
 import 'package:koralis_app/features/clients/domain/usecases/get_clients_usecase.dart';
+import 'package:koralis_app/features/instruments/data/repositories/instrument_repository_impl.dart';
+import 'package:koralis_app/features/instruments/domain/usecases/get_instruments_usecase.dart';
 import 'package:koralis_app/features/transactions/data/repositories/transaction_repository_impl.dart';
 import 'package:koralis_app/features/transactions/domain/entities/transaction.dart';
 import 'package:koralis_app/features/transactions/domain/usecases/delete_transaction_usecase.dart';
@@ -13,9 +15,11 @@ class TransactionsViewModel extends ChangeNotifier {
   GetTransactionsUseCase? _getTransactionsUseCase;
   DeleteTransactionUseCase? _deleteTransactionUseCase;
   GetClientsUseCase? _getClientsUseCase;
+  GetInstrumentsUseCase? _getInstrumentsUseCase;
 
   List<Transaction> _transacciones = const [];
   List<Client> _clientesDisponibles = const [];
+  Map<String, String> _numerosInstrumentosPorId = const {};
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -30,10 +34,12 @@ class TransactionsViewModel extends ChangeNotifier {
     GetTransactionsUseCase? getTransactionsUseCase,
     DeleteTransactionUseCase? deleteTransactionUseCase,
     GetClientsUseCase? getClientsUseCase,
+    GetInstrumentsUseCase? getInstrumentsUseCase,
   })  : _userId = userId,
         _getTransactionsUseCase = getTransactionsUseCase,
         _deleteTransactionUseCase = deleteTransactionUseCase,
-        _getClientsUseCase = getClientsUseCase {
+        _getClientsUseCase = getClientsUseCase,
+        _getInstrumentsUseCase = getInstrumentsUseCase {
     final ahora = DateTime.now();
     _fechaInicial = DateTime(ahora.year, ahora.month, 1);
     _fechaFinal = DateTime(ahora.year, ahora.month + 1, 0, 23, 59, 59);
@@ -63,6 +69,21 @@ class TransactionsViewModel extends ChangeNotifier {
       _getClientsUseCase ??= GetClientsUseCase(
         ClientRepositoryImpl(userId: _userId),
       );
+
+  GetInstrumentsUseCase _obtenerGetInstrumentsUseCase() =>
+      _getInstrumentsUseCase ??= GetInstrumentsUseCase(
+        InstrumentRepositoryImpl(userId: _userId),
+      );
+
+  /// Resuelve el número legible de un instrumento a partir de su [instrumentoId].
+  /// Retorna `null` si no existe o si no tiene número registrado (nunca expone el ID interno).
+  String? obtenerNumeroInstrumento(String? instrumentoId) {
+    if (instrumentoId == null) return null;
+    final id = instrumentoId.trim();
+    if (id.isEmpty) return null;
+    final numero = _numerosInstrumentosPorId[id];
+    return (numero != null && numero.isNotEmpty) ? numero : null;
+  }
 
   void _notificar() {
     if (!_disposed) {
@@ -128,6 +149,17 @@ class TransactionsViewModel extends ChangeNotifier {
       _clientesDisponibles = await _obtenerGetClientsUseCase().execute();
     } catch (_) {
       // Ignorar fallas de carga auxiliar de clientes
+    }
+
+    try {
+      final instrumentos = await _obtenerGetInstrumentsUseCase().execute();
+      _numerosInstrumentosPorId = {
+        for (final inst in instrumentos)
+          if (inst.id.trim().isNotEmpty && inst.numero.trim().isNotEmpty)
+            inst.id.trim(): inst.numero.trim(),
+      };
+    } catch (_) {
+      // Ignorar fallas de carga auxiliar de instrumentos
     } finally {
       _isLoading = false;
       _notificar();

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
 import 'package:koralis_app/features/clients/domain/usecases/get_clients_usecase.dart';
+import 'package:koralis_app/features/instruments/domain/usecases/get_instruments_usecase.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
 import 'package:koralis_app/features/profile/presentation/viewmodels/profile_view_model.dart';
@@ -20,6 +21,7 @@ class TransactionsScreen extends StatelessWidget {
   final DeleteTransactionUseCase? deleteTransactionUseCase;
   final GetProfileUseCase? getProfileUseCase;
   final GetClientsUseCase? getClientsUseCase;
+  final GetInstrumentsUseCase? getInstrumentsUseCase;
 
   const TransactionsScreen({
     super.key,
@@ -28,6 +30,7 @@ class TransactionsScreen extends StatelessWidget {
     this.deleteTransactionUseCase,
     this.getProfileUseCase,
     this.getClientsUseCase,
+    this.getInstrumentsUseCase,
   });
 
   bool _tieneProvider<T>(BuildContext context) {
@@ -57,6 +60,7 @@ class TransactionsScreen extends StatelessWidget {
               getTransactionsUseCase: getTransactionsUseCase,
               deleteTransactionUseCase: deleteTransactionUseCase,
               getClientsUseCase: getClientsUseCase,
+              getInstrumentsUseCase: getInstrumentsUseCase,
             ),
           ),
         if (!tieneProfileVm)
@@ -435,7 +439,11 @@ class _TransactionsViewState extends State<_TransactionsView> {
     ];
   }
 
-  void _mostrarFichaDetalle(BuildContext context, Transaction transaccion) {
+  void _mostrarFichaDetalle(
+    BuildContext context,
+    Transaction transaccion, {
+    String? numeroInstrumento,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final esManual = transaccion.tipo == TransactionType.recarga ||
@@ -508,13 +516,12 @@ class _TransactionsViewState extends State<_TransactionsView> {
                 ),
               ),
             ),
-            if (transaccion.instrumentoId != null &&
-                transaccion.instrumentoId!.isNotEmpty)
+            if (numeroInstrumento != null && numeroInstrumento.isNotEmpty)
               ListTile(
                 dense: true,
                 leading: const Icon(Icons.account_balance_wallet_outlined),
                 title: const Text('Instrumento Asociado'),
-                subtitle: Text(transaccion.instrumentoId!),
+                subtitle: Text(numeroInstrumento),
               ),
             if (transaccion.observacion.isNotEmpty)
               ListTile(
@@ -914,10 +921,8 @@ class _TransactionsViewState extends State<_TransactionsView> {
         final tx = filtradas[index];
         final esManual = tx.tipo == TransactionType.recarga ||
             tx.tipo == TransactionType.retiro;
-        final refInst = (tx.instrumentoId != null &&
-                tx.instrumentoId!.isNotEmpty)
-            ? ' • Inst: ${tx.instrumentoId}'
-            : '';
+        final numeroInst = vm.obtenerNumeroInstrumento(tx.instrumentoId);
+        final refInst = numeroInst != null ? ' • Inst: $numeroInst' : '';
 
         return AppListCard(
           titulo: tx.clienteNombre.isNotEmpty
@@ -948,7 +953,11 @@ class _TransactionsViewState extends State<_TransactionsView> {
               ),
             ),
           ),
-          onTap: () => _mostrarFichaDetalle(context, tx),
+          onTap: () => _mostrarFichaDetalle(
+            context,
+            tx,
+            numeroInstrumento: numeroInst,
+          ),
           accionesSwipe: esManual
               ? [
                   AppSwipeAction(

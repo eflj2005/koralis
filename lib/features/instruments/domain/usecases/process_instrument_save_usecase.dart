@@ -91,6 +91,10 @@ class ProcessInstrumentSaveUseCase {
     required Instrument instrumentoNuevo,
     Instrument? instrumentoPrevio,
   }) async {
+    if (instrumentoNuevo.numero.trim().isEmpty) {
+      throw Exception('El número del instrumento es obligatorio.');
+    }
+
     final estadoPrevio = instrumentoPrevio?.estado;
     final estadoNuevo = instrumentoNuevo.estado;
 
