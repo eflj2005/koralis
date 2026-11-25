@@ -11,15 +11,17 @@ Las dependencias del código solo pueden apuntar **hacia adentro**, hacia la Cap
 ```mermaid
 graph TD
     subgraph Capa Externa [Detalles / Infraestructura]
-        UI[Capa de Presentación: Screens & Widgets]
-        Data[Capa de Datos: Firestore, Firebase Auth, SQLite]
+        UI["Presentación — Views (Screens & Widgets)"]
+        VM["Presentación — ViewModels (ChangeNotifier / Provider)"]
+        Data["Capa de Datos: Firestore, Firebase Auth, SQLite"]
     end
 
     subgraph Capa Central [Negocio Inmutable]
-        Domain[Capa de Dominio: Entidades & Casos de Uso]
+        Domain["Capa de Dominio: Entidades & Casos de Uso"]
     end
 
-    UI -->|Depende de| Domain
+    UI -->|Observa y dispara acciones| VM
+    VM -->|Orquesta| Domain
     Data -->|Implementa contratos de| Domain
 ```
 
@@ -49,12 +51,22 @@ Implementa los contratos definidos por el dominio, conectándose con los servici
 - **Modelos y DTOs:** Adaptadores que deserializan y serializan mapas de Firestore (`fromMap` / `toMap`).
 - **Implementaciones de Repositorio:** Clases concretas (e.g. `InstrumentRepositoryImpl`) que consumen el [FirestoreService](file:///d:/Projects/Flutter/koralis/packages/core/lib/src/firebase/firestore_service.dart) del paquete Core y traducen los documentos a entidades de dominio.
 
-### 3. Capa de Presentación (`presentation/`)
-Responsable de capturar la interacción del usuario y renderizar la interfaz gráfica.
+### 3. Capa de Presentación (`presentation/`) — Patrón MVVM con `provider`
+Responsable de capturar la interacción del usuario, gestionar el estado de pantalla y renderizar la interfaz gráfica, desacoplada de la lógica de negocio mediante **Model-View-ViewModel (MVVM)** con el paquete `provider`.
 
-- **Pantallas (Screens):** Vistas completas registradas en [router.dart](file:///d:/Projects/Flutter/koralis/lib/app/router.dart) (e.g. `InstrumentsScreen`, `TransactionFormScreen`).
-- **Widgets Específicos:** Componentes visuales contextuales a la funcionalidad.
-- **Inyección y Estados:** Los widgets consumen los Casos de Uso correspondientes para solicitar o actualizar información.
+- **Views (`Screens` y `Widgets`):** Vistas registradas en [router.dart](file:///d:/Projects/Flutter/koralis/lib/app/router.dart) y componentes visuales contextuales (por ejemplo, `InstrumentsScreen`, `TransactionFormScreen`, `SignUpFormSheet`). Se encargan únicamente de renderizar la UI, mantener controladores efímeros de formulario (`TextEditingController`, `GlobalKey<FormState>`), observar el estado reactivo (`context.watch<T>()`) y delegar acciones al ViewModel (`context.read<T>()`).
+- **ViewModels (`presentation/viewmodels/`):** Clases que extienden `ChangeNotifier`. Encapsulan el estado de la vista (`cargando`, `errorMensaje`, filtros, listas, selecciones), inicializan perezosamente sus casos de uso y repositorios para evitar acoplamiento temprano con Firebase en pruebas, y protegen `notifyListeners()` frente a `dispose()`.
+- **Ciclo de vida e inyección con `provider`:**
+  - **Estado global compartido:** registrado en `MultiProvider` dentro de [main.dart](file:///d:/Projects/Flutter/koralis/lib/main.dart) (`ProfileViewModel`).
+  - **ViewModels por ruta:** inyectados por `AppRouter` en [router.dart](file:///d:/Projects/Flutter/koralis/lib/app/router.dart) mediante `ChangeNotifierProvider` (`LoginViewModel`, `ClientsViewModel`, `ClientFormViewModel`, `InstrumentsViewModel`, `InstrumentFormViewModel`, `TransactionsViewModel`, `TransactionFormViewModel`).
+  - **Compatibilidad con pruebas aisladas:** las vistas verifican si el ViewModel ya existe en el árbol y crean un `ChangeNotifierProvider` local de respaldo cuando se montan directamente en widget tests.
+
+#### Catálogo de ViewModels por módulo
+- `auth`: `LoginViewModel`, `SignUpViewModel`, `ForgotPasswordViewModel`.
+- `profile` (global, compartido con `dashboard`): `ProfileViewModel`.
+- `clients`: `ClientsViewModel`, `ClientFormViewModel`.
+- `instruments`: `InstrumentsViewModel`, `InstrumentFormViewModel`.
+- `transactions`: `TransactionsViewModel`, `TransactionFormViewModel`.
 
 ---
 
@@ -74,4 +86,4 @@ Para evitar la duplicación de código y mantener la pureza de las capas:
 
 ## 🧪 Inversión de Control y Testabilidad
 
-Al desacoplar las implementaciones mediante interfaces abstractas, el sistema puede ser sometido a pruebas exhaustivas en milisegundos mediante dobles de prueba (*fakes* o *mocks*), tal como se demuestra en [multi_user_isolation_test.dart](file:///d:/Projects/Flutter/koralis/test/features/multi_user_isolation_test.dart), sin necesidad de conectarse a emuladores pesados ni a bases de datos en vivo.
+Al desacoplar las implementaciones mediante interfaces abstractas en el dominio y ViewModels basados en `ChangeNotifier` en la presentación, el sistema puede someterse a pruebas rápidas y deterministas mediante dobles de prueba (*fakes* o *mocks*) —tanto a nivel de reglas de negocio ([multi_user_isolation_test.dart](file:///d:/Projects/Flutter/koralis/test/features/multi_user_isolation_test.dart)) como de estado y flujo de presentación en las suites unitarias de ViewModels bajo `test/features/`— sin necesidad de conectarse a emuladores ni a bases de datos en vivo.

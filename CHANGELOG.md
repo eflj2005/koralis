@@ -7,6 +7,27 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ---
 
+## [2.3.0] — 2026-11-25
+
+### Added
+- **Arquitectura MVVM con `provider` en la capa de presentación:**
+  - Agregada la dependencia `provider: ^6.1.2` en `pubspec.yaml` y configurado `MultiProvider` global en `lib/main.dart` con `ProfileViewModel`.
+  - Creados 10 ViewModels (`ChangeNotifier`) con inicialización perezosa de casos de uso y protección de `dispose()`:
+    - `profile`: `ProfileViewModel`.
+    - `clients`: `ClientsViewModel`, `ClientFormViewModel`.
+    - `transactions`: `TransactionsViewModel`, `TransactionFormViewModel`.
+    - `instruments`: `InstrumentsViewModel`, `InstrumentFormViewModel`.
+    - `auth`: `LoginViewModel`, `SignUpViewModel`, `ForgotPasswordViewModel`.
+  - Agregadas suites de pruebas unitarias para los 10 ViewModels en `test/features/`.
+
+### Changed
+- Migrada toda la capa de presentación (`auth`, `dashboard`, `profile`, `clients`, `instruments`, `transactions`) al patrón **MVVM con `provider`**, manteniendo intactas las capas `domain/`, `data/` y `packages/core/`.
+- `AppRouter` (`lib/app/router.dart`) inyecta los ViewModels por ruta mediante `ChangeNotifierProvider`.
+- `DashboardScreen` y `ProfileScreen` consumen el `ProfileViewModel` global y limpian la caché de perfil al cerrar sesión.
+- Documentación de arquitectura actualizada en `docs/architecture/clean_architecture.md`.
+
+---
+
 ## [2.2.0] — 2026-11-25
 
 ### Added
