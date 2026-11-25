@@ -1,32 +1,65 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
+import 'package:provider/provider.dart';
 import '../../domain/usecases/send_password_reset_email_usecase.dart';
-import '../../data/repositories/auth_repository_impl.dart';
+import '../viewmodels/forgot_password_view_model.dart';
 
 /// Modal emergente para solicitar el restablecimiento de contraseña vía correo.
-class ForgotPasswordFormSheet extends StatefulWidget {
+class ForgotPasswordFormSheet extends StatelessWidget {
   final String? initialEmail;
+  final SendPasswordResetEmailUseCase? sendPasswordResetEmailUseCase;
 
-  const ForgotPasswordFormSheet({super.key, this.initialEmail});
+  const ForgotPasswordFormSheet({
+    super.key,
+    this.initialEmail,
+    this.sendPasswordResetEmailUseCase,
+  });
+
+  bool _tieneProvider(BuildContext context) {
+    try {
+      Provider.of<ForgotPasswordViewModel>(context, listen: false);
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
+  }
 
   @override
-  State<ForgotPasswordFormSheet> createState() =>
-      _ForgotPasswordFormSheetState();
+  Widget build(BuildContext context) {
+    final debeCrearProviderLocal =
+        sendPasswordResetEmailUseCase != null || !_tieneProvider(context);
+
+    if (debeCrearProviderLocal) {
+      return ChangeNotifierProvider<ForgotPasswordViewModel>(
+        create: (_) => ForgotPasswordViewModel(
+          sendPasswordResetEmailUseCase: sendPasswordResetEmailUseCase,
+        ),
+        child: _ForgotPasswordFormSheetContent(initialEmail: initialEmail),
+      );
+    }
+
+    return _ForgotPasswordFormSheetContent(initialEmail: initialEmail);
+  }
 }
 
-class _ForgotPasswordFormSheetState extends State<ForgotPasswordFormSheet> {
-  final _formKey = GlobalKey<FormState>();
-  late final SendPasswordResetEmailUseCase _sendPasswordResetEmailUseCase;
-  late final TextEditingController _emailController;
+class _ForgotPasswordFormSheetContent extends StatefulWidget {
+  final String? initialEmail;
 
-  String? _errorMensaje;
-  bool _cargando = false;
+  const _ForgotPasswordFormSheetContent({this.initialEmail});
+
+  @override
+  State<_ForgotPasswordFormSheetContent> createState() =>
+      _ForgotPasswordFormSheetContentState();
+}
+
+class _ForgotPasswordFormSheetContentState
+    extends State<_ForgotPasswordFormSheetContent> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _emailController;
 
   @override
   void initState() {
     super.initState();
-    _sendPasswordResetEmailUseCase =
-        SendPasswordResetEmailUseCase(AuthRepositoryImpl());
     _emailController = TextEditingController(text: widget.initialEmail ?? '');
   }
 
@@ -37,35 +70,29 @@ class _ForgotPasswordFormSheetState extends State<ForgotPasswordFormSheet> {
   }
 
   Future<void> _onEnviarPressed() async {
-    setState(() => _errorMensaje = null);
+    final vm = context.read<ForgotPasswordViewModel>();
+    vm.limpiarError();
 
     if (!_formKey.currentState!.validate()) return;
-    if (_cargando) return;
-
-    setState(() => _cargando = true);
+    if (vm.cargando) return;
 
     try {
-      final email = _emailController.text.trim();
-      await _sendPasswordResetEmailUseCase.execute(email);
+      final email = await vm.enviarEnlace(_emailController.text);
 
       if (!mounted) return;
       // Cierra el modal retornando el correo confirmado
       Navigator.of(context).pop(email);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _errorMensaje = AppErrorHandler.parseMessage(e);
-      });
-    } finally {
-      if (mounted) {
-        setState(() => _cargando = false);
-      }
+    } catch (_) {
+      // El error queda registrado en el ViewModel y se muestra en el banner.
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final vm = context.watch<ForgotPasswordViewModel>();
+    final cargando = vm.cargando;
+    final errorMensaje = vm.errorMensaje;
 
     return Stack(
       children: [
@@ -110,7 +137,7 @@ class _ForgotPasswordFormSheetState extends State<ForgotPasswordFormSheet> {
               const SizedBox(height: 24),
 
               // --- Banner de error ---
-              if (_errorMensaje != null) ...[
+              if (errorMensaje != null) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
@@ -133,7 +160,7 @@ class _ForgotPasswordFormSheetState extends State<ForgotPasswordFormSheet> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          _errorMensaje!,
+                          errorMensaje,
                           style: TextStyle(
                             color: theme.colorScheme.onErrorContainer,
                             fontSize: 13,
@@ -162,14 +189,14 @@ class _ForgotPasswordFormSheetState extends State<ForgotPasswordFormSheet> {
               AppButton(
                 texto: 'Enviar enlace de recuperación',
                 icono: Icons.send_rounded,
-                onPressed: _cargando ? null : _onEnviarPressed,
+                onPressed: cargando ? null : _onEnviarPressed,
               ),
               const SizedBox(height: 12),
 
               // --- Cancelar / Volver ---
               Center(
                 child: TextButton(
-                  onPressed: _cargando ? null : () => Navigator.of(context).pop(),
+                  onPressed: cargando ? null : () => Navigator.of(context).pop(),
                   child: const Text('Volver al inicio de sesión'),
                 ),
               ),
@@ -178,7 +205,7 @@ class _ForgotPasswordFormSheetState extends State<ForgotPasswordFormSheet> {
         ),
 
         // --- Overlay de carga ---
-        if (_cargando)
+        if (cargando)
           const Positioned.fill(
             child: LoadingWidget(),
           ),

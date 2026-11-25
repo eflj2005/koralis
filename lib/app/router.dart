@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:koralis_app/features/auth/presentation/login_screen.dart';
 import 'package:koralis_app/features/auth/presentation/sign_up_screen.dart';
+import 'package:koralis_app/features/auth/presentation/viewmodels/login_view_model.dart';
 import 'package:koralis_app/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:koralis_app/features/profile/presentation/profile_screen.dart';
 import 'package:koralis_app/features/clients/presentation/clients_screen.dart';
@@ -22,10 +23,19 @@ import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 /// Enrutador principal de la aplicación Koralis.
 /// Gestiona la generación dinámica de rutas nombradas.
 class AppRouter {
+  static Route<dynamic> _buildLoginRoute() {
+    return MaterialPageRoute(
+      builder: (_) => ChangeNotifierProvider<LoginViewModel>(
+        create: (_) => LoginViewModel(),
+        child: const LoginScreen(),
+      ),
+    );
+  }
+
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case '/':
-        return MaterialPageRoute(builder: (_) => const LoginScreen());
+        return _buildLoginRoute();
       case '/sign_up':
         return MaterialPageRoute(builder: (_) => const SignUpScreen());
       case '/dashboard':
@@ -63,7 +73,7 @@ class AppRouter {
             ),
           );
         }
-        return MaterialPageRoute(builder: (_) => const LoginScreen());
+        return _buildLoginRoute();
       case '/instruments':
         final user = settings.arguments as User;
         return MaterialPageRoute(
@@ -96,7 +106,7 @@ class AppRouter {
             ),
           );
         }
-        return MaterialPageRoute(builder: (_) => const LoginScreen());
+        return _buildLoginRoute();
       case '/transactions':
         final user = settings.arguments as User;
         return MaterialPageRoute(
@@ -131,14 +141,14 @@ class AppRouter {
             ),
           );
         }
-        return MaterialPageRoute(builder: (_) => const LoginScreen());
+        return _buildLoginRoute();
       case '/profile':
         final profile = settings.arguments as Profile;
         return MaterialPageRoute(
           builder: (_) => ProfileScreen(profile: profile),
         );
       default:
-        return MaterialPageRoute(builder: (_) => const LoginScreen());
+        return _buildLoginRoute();
     }
   }
 }

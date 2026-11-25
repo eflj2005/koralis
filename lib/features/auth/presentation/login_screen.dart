@@ -1,35 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_arc_text/flutter_arc_text.dart';
 import 'package:core/core.dart';
+import 'package:provider/provider.dart';
 import '../domain/usecases/login_usecase.dart';
 import '../domain/usecases/resend_email_verification_usecase.dart';
-import '../data/repositories/auth_repository_impl.dart';
+import 'viewmodels/login_view_model.dart';
 import 'widgets/sign_up_form_sheet.dart';
 import 'widgets/forgot_password_form_sheet.dart';
 
 /// Pantalla de inicio de sesión de la aplicación Koralis con validación obligatoria de correo verificado.
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class LoginScreen extends StatelessWidget {
+  final LoginUseCase? loginUseCase;
+  final ResendEmailVerificationUseCase? resendEmailVerificationUseCase;
 
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
+  const LoginScreen({
+    super.key,
+    this.loginUseCase,
+    this.resendEmailVerificationUseCase,
+  });
 
-class _LoginScreenState extends State<LoginScreen> {
-  /// Caso de uso para inicio de sesión
-  late final LoginUseCase _loginUseCase;
-
-  /// Caso de uso para reenvío de correo de confirmación
-  late final ResendEmailVerificationUseCase _resendVerificationUseCase;
-
-  @override
-  void initState() {
-    super.initState();
-    final authRepository = AuthRepositoryImpl();
-    _loginUseCase = LoginUseCase(authRepository);
-    _resendVerificationUseCase = ResendEmailVerificationUseCase(authRepository);
+  bool _tieneProvider(BuildContext context) {
+    try {
+      Provider.of<LoginViewModel>(context, listen: false);
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
   }
 
+  @override
+  Widget build(BuildContext context) {
+    final debeCrearProviderLocal =
+        loginUseCase != null ||
+        resendEmailVerificationUseCase != null ||
+        !_tieneProvider(context);
+
+    if (debeCrearProviderLocal) {
+      return ChangeNotifierProvider<LoginViewModel>(
+        create: (_) => LoginViewModel(
+          loginUseCase: loginUseCase,
+          resendEmailVerificationUseCase: resendEmailVerificationUseCase,
+        ),
+        child: const _LoginScreenContent(),
+      );
+    }
+
+    return const _LoginScreenContent();
+  }
+}
+
+class _LoginScreenContent extends StatefulWidget {
+  const _LoginScreenContent();
+
+  @override
+  State<_LoginScreenContent> createState() => _LoginScreenContentState();
+}
+
+class _LoginScreenContentState extends State<_LoginScreenContent> {
   /// Controlador para el campo de correo electrónico
   final TextEditingController _emailController = TextEditingController();
 
@@ -39,9 +66,6 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Llave del formulario para validación
   final _formKey = GlobalKey<FormState>();
 
-  /// Indica si el proceso de carga está activo
-  bool _cargando = false;
-
   @override
   void dispose() {
     // Liberar recursos de los controladores al destruir el widget
@@ -50,25 +74,26 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// Ejecuta el proceso de inicio de sesión llamando al caso de uso
-  void _onIngresarPressed() async {
+  /// Ejecuta el proceso de inicio de sesión llamando al ViewModel
+  Future<void> _onIngresarPressed() async {
     // Validar formulario primero
     if (!_formKey.currentState!.validate()) return;
 
+    final vm = context.read<LoginViewModel>();
     // Evitar doble activación si ya está cargando
-    if (_cargando) return;
+    if (vm.cargando) return;
 
     // Limpiar notificaciones previas en pantalla
     AppMessenger.clear(context);
-
-    setState(() => _cargando = true);
 
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
     try {
-      // Llamada a la capa de dominio (valida credenciales y estado de correo verificado)
-      final user = await _loginUseCase.execute(email, password);
+      final user = await vm.iniciarSesion(
+        correo: email,
+        contrasena: password,
+      );
 
       if (!mounted) return;
 
@@ -79,21 +104,13 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.pushReplacementNamed(context, '/dashboard', arguments: user);
     } catch (e) {
       if (!mounted) return;
-      final mensajeError = AppErrorHandler.parseMessage(e);
-      final esNoVerificado =
-          mensajeError.toLowerCase().contains('no ha sido verificado') ||
-          mensajeError.toLowerCase().contains('verificación') ||
-          mensajeError.toLowerCase().contains('confirmación');
+      final mensajeError = vm.errorMensaje ?? AppErrorHandler.parseMessage(e);
 
-      if (esNoVerificado) {
+      if (vm.esErrorCorreoNoVerificado(mensajeError)) {
         // Mostrar diálogo interactivo para reenviar el enlace de confirmación
         _mostrarDialogoReenvio(context, email, password);
       } else {
         AppMessenger.showErrorSnackBar(context, mensajeError);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _cargando = false);
       }
     }
   }
@@ -156,9 +173,9 @@ class _LoginScreenState extends State<LoginScreen> {
     String email,
     String password,
   ) async {
-    setState(() => _cargando = true);
+    final vm = context.read<LoginViewModel>();
     try {
-      await _resendVerificationUseCase.execute(
+      await vm.reenviarConfirmacion(
         correo: email,
         contrasena: password,
       );
@@ -170,12 +187,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      final error = AppErrorHandler.parseMessage(e);
+      final error = vm.errorMensaje ?? AppErrorHandler.parseMessage(e);
       AppMessenger.showErrorSnackBar(context, error);
-    } finally {
-      if (mounted) {
-        setState(() => _cargando = false);
-      }
     }
   }
 
@@ -345,6 +358,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cargando = context.watch<LoginViewModel>().cargando;
 
     return Scaffold(
       body: Stack(
@@ -479,8 +493,8 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
 
-          // --- Overlay de carga: visible solo cuando _cargando es true ---
-          if (_cargando) const LoadingWidget(),
+          // --- Overlay de carga: visible solo cuando cargando es true ---
+          if (cargando) const LoadingWidget(),
         ],
       ),
     );

@@ -1,16 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
+import 'package:provider/provider.dart';
 import '../../profile/domain/entities/profile.dart';
+import 'viewmodels/profile_view_model.dart';
 
 class ProfileScreen extends StatelessWidget {
   final Profile profile;
 
   const ProfileScreen({super.key, required this.profile});
 
+  Profile _resolverPerfil(BuildContext context) {
+    try {
+      return context.watch<ProfileViewModel>().profile ?? profile;
+    } on ProviderNotFoundException {
+      return profile;
+    }
+  }
+
+  void _limpiarPerfilSiExiste(BuildContext context) {
+    try {
+      context.read<ProfileViewModel>().limpiar();
+    } on ProviderNotFoundException {
+      // Pantalla abierta de forma aislada sin ProfileViewModel en el árbol.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final perfilActual = _resolverPerfil(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -46,7 +65,7 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   child: ClipOval(
                     child: Image.asset(
-                      profile.avatarPath,
+                      perfilActual.avatarPath,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) =>
                           const Icon(Icons.person, size: 80),
@@ -58,7 +77,7 @@ class ProfileScreen extends StatelessWidget {
 
               // --- Datos del Usuario ---
               Text(
-                profile.nombre,
+                perfilActual.nombre,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontSize: 28,
@@ -67,7 +86,7 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                profile.correo,
+                perfilActual.correo,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontSize: 16,
@@ -92,6 +111,7 @@ class ProfileScreen extends StatelessWidget {
                 icono: Icons.logout,
                 color: colorScheme.error,
                 onPressed: () {
+                  _limpiarPerfilSiExiste(context);
                   // Retorna a la pantalla de inicio (login) borrando todo el historial
                   Navigator.pushNamedAndRemoveUntil(
                     context,

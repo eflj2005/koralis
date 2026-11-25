@@ -1,23 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
+import 'package:provider/provider.dart';
 import '../../domain/usecases/sign_up_usecase.dart';
-import '../../data/repositories/auth_repository_impl.dart';
+import '../viewmodels/sign_up_view_model.dart';
 
 /// Formulario interactivo de registro de nuevos usuarios de Koralis,
 /// diseñado para ser renderizado dentro de un modal emergente [AppModalBottomSheet].
-class SignUpFormSheet extends StatefulWidget {
-  const SignUpFormSheet({super.key});
+class SignUpFormSheet extends StatelessWidget {
+  final SignUpUseCase? signUpUseCase;
+
+  const SignUpFormSheet({super.key, this.signUpUseCase});
+
+  bool _tieneProvider(BuildContext context) {
+    try {
+      Provider.of<SignUpViewModel>(context, listen: false);
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
+  }
 
   @override
-  State<SignUpFormSheet> createState() => _SignUpFormSheetState();
+  Widget build(BuildContext context) {
+    final debeCrearProviderLocal =
+        signUpUseCase != null || !_tieneProvider(context);
+
+    if (debeCrearProviderLocal) {
+      return ChangeNotifierProvider<SignUpViewModel>(
+        create: (_) => SignUpViewModel(signUpUseCase: signUpUseCase),
+        child: const _SignUpFormSheetContent(),
+      );
+    }
+
+    return const _SignUpFormSheetContent();
+  }
 }
 
-class _SignUpFormSheetState extends State<SignUpFormSheet> {
+class _SignUpFormSheetContent extends StatefulWidget {
+  const _SignUpFormSheetContent();
+
+  @override
+  State<_SignUpFormSheetContent> createState() =>
+      _SignUpFormSheetContentState();
+}
+
+class _SignUpFormSheetContentState extends State<_SignUpFormSheetContent> {
   /// Llave global para la gestión y validación del formulario
   final _formKey = GlobalKey<FormState>();
-
-  /// Caso de uso de registro
-  late final SignUpUseCase _signUpUseCase;
 
   /// Controlador para el campo de nombre completo
   final TextEditingController _nameController = TextEditingController();
@@ -39,21 +68,6 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
   final TextEditingController _confirmPasswordController =
       TextEditingController();
 
-  /// Fecha de nacimiento seleccionada
-  DateTime? _selectedBirthDate;
-
-  /// Mensaje de error visible dentro del modal
-  String? _errorMensaje;
-
-  /// Indica si hay una operación de registro en progreso
-  bool _cargando = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _signUpUseCase = SignUpUseCase(AuthRepositoryImpl());
-  }
-
   @override
   void dispose() {
     // Liberación de recursos de los controladores
@@ -68,9 +82,10 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
 
   /// Despliega el selector de fecha (DatePicker) para elegir la fecha de nacimiento
   Future<void> _seleccionarFechaNacimiento() async {
+    final vm = context.read<SignUpViewModel>();
     final DateTime ahora = DateTime.now();
     final DateTime fechaInicial =
-        _selectedBirthDate ?? DateTime(ahora.year - 25, ahora.month, ahora.day);
+        vm.selectedBirthDate ?? DateTime(ahora.year - 25, ahora.month, ahora.day);
 
     final DateTime? fechaSeleccionada = await showDatePicker(
       context: context,
@@ -83,65 +98,52 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
       confirmText: 'Aceptar',
     );
 
-    if (fechaSeleccionada != null) {
-      setState(() {
-        _selectedBirthDate = fechaSeleccionada;
-        _errorMensaje = null;
-        // Formato legible DD/MM/AAAA
-        final dia = fechaSeleccionada.day.toString().padLeft(2, '0');
-        final mes = fechaSeleccionada.month.toString().padLeft(2, '0');
-        final anio = fechaSeleccionada.year;
-        _nacimientoController.text = '$dia/$mes/$anio';
-      });
+    if (fechaSeleccionada != null && mounted) {
+      vm.seleccionarFechaNacimiento(fechaSeleccionada);
+      // Formato legible DD/MM/AAAA
+      final dia = fechaSeleccionada.day.toString().padLeft(2, '0');
+      final mes = fechaSeleccionada.month.toString().padLeft(2, '0');
+      final anio = fechaSeleccionada.year;
+      _nacimientoController.text = '$dia/$mes/$anio';
     }
   }
 
   /// Ejecuta el proceso de registro validando credenciales y creando registros en Firebase
   Future<void> _onRegistrarsePressed() async {
-    setState(() => _errorMensaje = null);
+    final vm = context.read<SignUpViewModel>();
+    vm.setError(null);
 
     if (!_formKey.currentState!.validate()) {
-      setState(() {
-        _errorMensaje = 'Por favor completa y corrige los campos señalados.';
-      });
+      vm.setError('Por favor completa y corrige los campos señalados.');
       return;
     }
 
-    if (_cargando) return;
-
-    setState(() => _cargando = true);
+    if (vm.cargando) return;
 
     try {
-      final correoRegistrado = _emailController.text.trim();
-
       // 1. Ejecutar el registro en Firebase Auth y Firestore (envía correo de confirmación y cierra sesión)
-      await _signUpUseCase.execute(
-        nombre: _nameController.text.trim(),
-        correo: correoRegistrado,
+      final correoRegistrado = await vm.registrarUsuario(
+        nombre: _nameController.text,
+        correo: _emailController.text,
         contrasena: _passwordController.text,
-        nacimiento: _nacimientoController.text.trim(),
+        nacimiento: _nacimientoController.text,
       );
 
       if (!mounted) return;
 
       // 2. Cerrar el modal emergente de registro retornando el correo registrado
       Navigator.of(context).pop(correoRegistrado);
-    } catch (e) {
-      if (!mounted) return;
-      final mensajeError = AppErrorHandler.parseMessage(e);
-      setState(() {
-        _errorMensaje = mensajeError;
-      });
-    } finally {
-      if (mounted) {
-        setState(() => _cargando = false);
-      }
+    } catch (_) {
+      // El error queda registrado en el ViewModel y se muestra en el banner.
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final vm = context.watch<SignUpViewModel>();
+    final cargando = vm.cargando;
+    final errorMensaje = vm.errorMensaje;
 
     return Stack(
       children: [
@@ -174,7 +176,7 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
                   IconButton(
                     icon: const Icon(Icons.close),
                     tooltip: 'Cerrar',
-                    onPressed: _cargando
+                    onPressed: cargando
                         ? null
                         : () => Navigator.of(context).pop(),
                   ),
@@ -190,7 +192,7 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
               const SizedBox(height: 16),
 
               // --- Banner de error visible en el modal ---
-              if (_errorMensaje != null) ...[
+              if (errorMensaje != null) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
@@ -213,7 +215,7 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          _errorMensaje!,
+                          errorMensaje,
                           style: TextStyle(
                             color: theme.colorScheme.onErrorContainer,
                             fontSize: 13,
@@ -249,7 +251,7 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
 
               // --- Campo: Fecha de nacimiento con selector ---
               GestureDetector(
-                onTap: _cargando ? null : _seleccionarFechaNacimiento,
+                onTap: cargando ? null : _seleccionarFechaNacimiento,
                 child: AbsorbPointer(
                   child: AppTextField(
                     label: 'Fecha de nacimiento',
@@ -332,7 +334,7 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
               AppButton(
                 texto: 'Registrarse',
                 icono: Icons.person_add_alt_1,
-                onPressed: _cargando ? null : _onRegistrarsePressed,
+                onPressed: cargando ? null : _onRegistrarsePressed,
               ),
               const SizedBox(height: 12),
 
@@ -342,7 +344,7 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
                 children: [
                   const Text('¿Ya tienes una cuenta?'),
                   TextButton(
-                    onPressed: _cargando
+                    onPressed: cargando
                         ? null
                         : () => Navigator.of(context).pop(),
                     child: const Text('Inicia sesión'),
@@ -354,7 +356,7 @@ class _SignUpFormSheetState extends State<SignUpFormSheet> {
         ),
 
         // --- Overlay de carga mientras se crea el usuario ---
-        if (_cargando)
+        if (cargando)
           const Positioned.fill(
             child: LoadingWidget(),
           ),

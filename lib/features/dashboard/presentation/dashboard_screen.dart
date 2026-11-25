@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart';
+import 'package:provider/provider.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:koralis_app/features/profile/presentation/viewmodels/profile_view_model.dart';
 
 /// Pantalla principal (Dashboard) de Koralis estructurada con:
 /// - Barra lateral base compacta (86 px) con la esfera de perfil superior y el cierre de sesión inferior siempre fijos.
@@ -13,7 +14,7 @@ import 'package:koralis_app/features/profile/data/repositories/profile_repositor
 ///   con textos girados 90° a la izquierda (lectura vertical de abajo hacia arriba) e iconos temáticos.
 /// - Contenido de la derecha (tarjetas) con tamaño y posición estables e invariables.
 /// - Sin barra superior de título (inmersivo a pantalla completa).
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends StatelessWidget {
   final User user;
   final GetProfileUseCase? getProfileUseCase;
 
@@ -23,28 +24,56 @@ class DashboardScreen extends StatefulWidget {
     this.getProfileUseCase,
   });
 
+  bool _tieneProvider(BuildContext context) {
+    try {
+      Provider.of<ProfileViewModel>(context, listen: false);
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
+  }
+
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  Widget build(BuildContext context) {
+    final debeCrearProviderLocal =
+        getProfileUseCase != null || !_tieneProvider(context);
+
+    if (debeCrearProviderLocal) {
+      return ChangeNotifierProvider<ProfileViewModel>(
+        create: (_) => ProfileViewModel(getProfileUseCase: getProfileUseCase),
+        child: _DashboardScreenContent(user: user),
+      );
+    }
+
+    return _DashboardScreenContent(user: user);
+  }
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenContent extends StatefulWidget {
+  final User user;
+
+  const _DashboardScreenContent({required this.user});
+
+  @override
+  State<_DashboardScreenContent> createState() =>
+      _DashboardScreenContentState();
+}
+
+class _DashboardScreenContentState extends State<_DashboardScreenContent> {
   /// Ancho estándar de la barra lateral base compacta
   static const double _anchoBarraBase = 58.0;
 
   /// Índice de la pestaña de carpeta actualmente seleccionada/activa (opcional)
   int? _pestanaSeleccionada;
 
-  late final GetProfileUseCase _getProfileUseCase;
-  Future<Profile>? _profileFuture;
-
   @override
   void initState() {
     super.initState();
-    _getProfileUseCase =
-        widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
-
-    // Iniciar carga del perfil usando el id del usuario autenticado
-    _profileFuture = _getProfileUseCase.execute(widget.user.id);
+    // Iniciar carga del perfil usando el id del usuario autenticado en el ProfileViewModel global
+    Future.microtask(() {
+      if (!mounted) return;
+      context.read<ProfileViewModel>().cargarPerfil(widget.user.id);
+    });
   }
 
   /// Muestra el menú contextual de perfil con opciones para ir al perfil,
@@ -224,6 +253,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               onPressed: () {
                 Navigator.pop(dialogContext);
+                context.read<ProfileViewModel>().limpiar();
                 Navigator.pushNamedAndRemoveUntil(
                   context,
                   '/',
@@ -334,6 +364,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final profile = context.watch<ProfileViewModel>().profile;
+    final imageProvider = profile?.avatarPath != null
+        ? AssetImage(profile!.avatarPath) as ImageProvider
+        : const AssetImage('images/avatar.png');
 
     return Scaffold(
       body: SafeArea(
@@ -463,19 +497,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             // ===============================================================
             AppSidebarNavigation(
               anchoBarra: _anchoBarraBase,
-              insigniaFlotante: FutureBuilder<Profile>(
-                future: _profileFuture,
-                builder: (context, snapshot) {
-                  final profile = snapshot.data;
-                  final imageProvider = profile?.avatarPath != null
-                      ? AssetImage(profile!.avatarPath) as ImageProvider
-                      : const AssetImage('images/avatar.png');
-
-                  return AppFloatingProfileBadge(
-                    proveedorImagen: imageProvider,
-                    onTap: () => _mostrarMenuPerfil(context, profile),
-                  );
-                },
+              insigniaFlotante: AppFloatingProfileBadge(
+                proveedorImagen: imageProvider,
+                onTap: () => _mostrarMenuPerfil(context, profile),
               ),
               seccionPestanas: AppFolderTabBar(
                 items: _obtenerItemsPestanas(context),
