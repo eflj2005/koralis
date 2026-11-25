@@ -1,22 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart' hide Transaction;
+import 'package:provider/provider.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
-import 'package:koralis_app/features/clients/domain/entities/client.dart';
 import 'package:koralis_app/features/clients/domain/usecases/get_clients_usecase.dart';
-import 'package:koralis_app/features/clients/data/repositories/client_repository_impl.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:koralis_app/features/profile/presentation/viewmodels/profile_view_model.dart';
 import '../domain/entities/transaction.dart';
 import '../domain/usecases/get_transactions_usecase.dart';
 import '../domain/usecases/delete_transaction_usecase.dart';
-import '../domain/repositories/transaction_repository.dart';
-import '../data/repositories/transaction_repository_impl.dart';
 import 'transaction_form_screen.dart';
+import 'viewmodels/transactions_view_model.dart';
 
-/// Pantalla principal para la consulta y gestión de transacciones financieras.
-class TransactionsScreen extends StatefulWidget {
+/// Pantalla principal para la consulta y gestión de transacciones financieras (arquitectura MVVM con `provider`).
+class TransactionsScreen extends StatelessWidget {
   final User user;
   final GetTransactionsUseCase? getTransactionsUseCase;
   final DeleteTransactionUseCase? deleteTransactionUseCase;
@@ -32,143 +30,116 @@ class TransactionsScreen extends StatefulWidget {
     this.getClientsUseCase,
   });
 
+  bool _tieneProvider<T>(BuildContext context) {
+    try {
+      Provider.of<T>(context, listen: false);
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
+  }
+
   @override
-  State<TransactionsScreen> createState() => _TransactionsScreenState();
+  Widget build(BuildContext context) {
+    final tieneTxVm = _tieneProvider<TransactionsViewModel>(context);
+    final tieneProfileVm = _tieneProvider<ProfileViewModel>(context);
+
+    if (tieneTxVm && tieneProfileVm) {
+      return _TransactionsView(user: user);
+    }
+
+    return MultiProvider(
+      providers: [
+        if (!tieneTxVm)
+          ChangeNotifierProvider<TransactionsViewModel>(
+            create: (_) => TransactionsViewModel(
+              userId: user.id,
+              getTransactionsUseCase: getTransactionsUseCase,
+              deleteTransactionUseCase: deleteTransactionUseCase,
+              getClientsUseCase: getClientsUseCase,
+            ),
+          ),
+        if (!tieneProfileVm)
+          ChangeNotifierProvider<ProfileViewModel>(
+            create: (_) => ProfileViewModel(
+              getProfileUseCase: getProfileUseCase,
+            ),
+          ),
+      ],
+      child: _TransactionsView(user: user),
+    );
+  }
 }
 
-class _TransactionsScreenState extends State<TransactionsScreen> {
+class _TransactionsView extends StatefulWidget {
+  final User user;
+
+  const _TransactionsView({required this.user});
+
+  @override
+  State<_TransactionsView> createState() => _TransactionsViewState();
+}
+
+class _TransactionsViewState extends State<_TransactionsView> {
   static const double _anchoBarraBase = 58.0;
-
-  late final GetTransactionsUseCase _getTransactionsUseCase;
-  DeleteTransactionUseCase? _deleteTransactionUseCase;
-  late final GetProfileUseCase _getProfileUseCase;
-  late final GetClientsUseCase _getClientsUseCase;
-
-  Future<List<Transaction>>? _transaccionesFuture;
-  Future<Profile>? _profileFuture;
-  List<Client> _clientesDisponibles = [];
-
-  // Filtros reactivos
-  String? _filtroClienteId; // null = Todos los clientes
-  TransactionType? _filtroTipo; // null = Todos los tipos
-  late DateTime _fechaInicial;
-  late DateTime _fechaFinal;
 
   @override
   void initState() {
     super.initState();
-    final ahora = DateTime.now();
-    _fechaInicial = DateTime(ahora.year, ahora.month, 1);
-    _fechaFinal = DateTime(ahora.year, ahora.month + 1, 0, 23, 59, 59);
-
-    TransactionRepository? repo;
-    TransactionRepository obtenerRepositorio() =>
-        repo ??= TransactionRepositoryImpl(userId: widget.user.id);
-
-    _getTransactionsUseCase = widget.getTransactionsUseCase ??
-        GetTransactionsUseCase(obtenerRepositorio());
-    _deleteTransactionUseCase = widget.deleteTransactionUseCase;
-    _getProfileUseCase =
-        widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
-    _getClientsUseCase = widget.getClientsUseCase ??
-        GetClientsUseCase(ClientRepositoryImpl(userId: widget.user.id));
-
-    _cargarDatos();
-  }
-
-  void _cargarDatos() {
-    setState(() {
-      _transaccionesFuture = _getTransactionsUseCase.execute();
-      _profileFuture = _getProfileUseCase.execute(widget.user.id);
-    });
-    _cargarClientes();
-  }
-
-  Future<void> _cargarClientes() async {
-    try {
-      final clientes = await _getClientsUseCase.execute();
-      if (mounted) {
-        setState(() {
-          _clientesDisponibles = clientes;
-        });
-      }
-    } catch (_) {
-      // Ignorar fallas de conexión seguras
-    }
-  }
-
-  bool _esMesActual() {
-    final ahora = DateTime.now();
-    final primerDia = DateTime(ahora.year, ahora.month, 1);
-    final ultimoDia = DateTime(ahora.year, ahora.month + 1, 0, 23, 59, 59);
-
-    return _fechaInicial.year == primerDia.year &&
-        _fechaInicial.month == primerDia.month &&
-        _fechaInicial.day == primerDia.day &&
-        _fechaFinal.year == ultimoDia.year &&
-        _fechaFinal.month == ultimoDia.month &&
-        _fechaFinal.day == ultimoDia.day;
-  }
-
-  void _restablecerMesActual() {
-    final ahora = DateTime.now();
-    setState(() {
-      _fechaInicial = DateTime(ahora.year, ahora.month, 1);
-      _fechaFinal = DateTime(ahora.year, ahora.month + 1, 0, 23, 59, 59);
+    Future.microtask(() {
+      if (!mounted) return;
+      context.read<TransactionsViewModel>().cargarDatos();
+      context.read<ProfileViewModel>().cargarPerfil(widget.user.id);
     });
   }
 
-  Future<void> _seleccionarFechaInicial(BuildContext context) async {
+  Future<void> _seleccionarFechaInicial(
+    BuildContext context,
+    TransactionsViewModel vm,
+  ) async {
     final DateTime? seleccionada = await showDatePicker(
       context: context,
-      initialDate: _fechaInicial,
+      initialDate: vm.fechaInicial,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
     );
 
-    if (seleccionada != null) {
-      final normalizada =
-          DateTime(seleccionada.year, seleccionada.month, seleccionada.day);
-      if (normalizada.isAfter(_fechaFinal)) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
+    if (seleccionada != null && mounted) {
+      final ok = vm.actualizarFechaInicial(seleccionada);
+      if (!ok) {
+        ScaffoldMessenger.of(this.context).showSnackBar(
           const SnackBar(
-            content: Text('La fecha inicial no puede ser posterior a la fecha final'),
+            content: Text(
+              'La fecha inicial no puede ser posterior a la fecha final',
+            ),
           ),
         );
-        return;
       }
-      setState(() => _fechaInicial = normalizada);
     }
   }
 
-  Future<void> _seleccionarFechaFinal(BuildContext context) async {
+  Future<void> _seleccionarFechaFinal(
+    BuildContext context,
+    TransactionsViewModel vm,
+  ) async {
     final DateTime? seleccionada = await showDatePicker(
       context: context,
-      initialDate: _fechaFinal,
+      initialDate: vm.fechaFinal,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
     );
 
-    if (seleccionada != null) {
-      final normalizada = DateTime(
-        seleccionada.year,
-        seleccionada.month,
-        seleccionada.day,
-        23,
-        59,
-        59,
-      );
-      if (normalizada.isBefore(_fechaInicial)) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
+    if (seleccionada != null && mounted) {
+      final ok = vm.actualizarFechaFinal(seleccionada);
+      if (!ok) {
+        ScaffoldMessenger.of(this.context).showSnackBar(
           const SnackBar(
-            content: Text('La fecha final no puede ser anterior a la fecha inicial'),
+            content: Text(
+              'La fecha final no puede ser anterior a la fecha inicial',
+            ),
           ),
         );
-        return;
       }
-      setState(() => _fechaFinal = normalizada);
     }
   }
 
@@ -195,8 +166,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       arguments: TransactionFormArgs(user: widget.user),
     ) as bool?;
 
-    if (creado == true) {
-      _cargarDatos();
+    if (creado == true && context.mounted) {
+      context.read<TransactionsViewModel>().cargarDatos();
     }
   }
 
@@ -213,15 +184,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       ),
     ) as bool?;
 
-    if (actualizado == true) {
-      _cargarDatos();
+    if (actualizado == true && context.mounted) {
+      context.read<TransactionsViewModel>().cargarDatos();
     }
   }
-
-  DeleteTransactionUseCase _obtenerDeleteTransactionUseCase() =>
-      _deleteTransactionUseCase ??= DeleteTransactionUseCase(
-        TransactionRepositoryImpl(userId: widget.user.id),
-      );
 
   /// Solicita confirmación, elimina una transacción manual y notifica el nuevo saldo del cliente.
   Future<void> _confirmarEliminarTransaccion(
@@ -271,23 +237,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     if (confirmar != true || !mounted) return;
 
     try {
-      await _obtenerDeleteTransactionUseCase().execute(
-        tx.id,
-        clienteId: tx.clienteId,
-      );
-      final txsCliente =
-          await _getTransactionsUseCase.execute(clienteId: tx.clienteId);
-      final nuevoSaldo = txsCliente.fold<double>(
-        0.0,
-        (sum, t) => sum + t.valorFirmado,
-      );
+      final nuevoSaldo = await this.context
+          .read<TransactionsViewModel>()
+          .eliminarTransaccion(tx);
       final saldoTexto = nuevoSaldo < 0
           ? '- ${_formatearMoneda(nuevoSaldo.abs())}'
           : _formatearMoneda(nuevoSaldo);
 
       if (!mounted) return;
-      _cargarDatos();
-
       if (nuevoSaldo < 0) {
         AppMessenger.showErrorSnackBar(
           this.context,
@@ -339,6 +296,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               ),
               onPressed: () {
                 Navigator.pop(dialogContext);
+                context.read<ProfileViewModel>().limpiar();
                 Navigator.pushNamedAndRemoveUntil(
                   context,
                   '/',
@@ -463,9 +421,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         titulo: 'Transacciones',
         icono: Icons.receipt_long_outlined,
         colorAcento: colorScheme.tertiary,
-        onTap: () {
-          // Ya nos encontramos en Transacciones
-        },
+        onTap: () {},
       ),
       AppFolderTabItem(
         indice: 3,
@@ -537,7 +493,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 8),
-
             ListTile(
               dense: true,
               leading: const Icon(Icons.attach_money_rounded),
@@ -553,7 +508,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
               ),
             ),
-
             if (transaccion.instrumentoId != null &&
                 transaccion.instrumentoId!.isNotEmpty)
               ListTile(
@@ -562,7 +516,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 title: const Text('Instrumento Asociado'),
                 subtitle: Text(transaccion.instrumentoId!),
               ),
-
             if (transaccion.observacion.isNotEmpty)
               ListTile(
                 dense: true,
@@ -570,9 +523,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 title: const Text('Observación'),
                 subtitle: Text(transaccion.observacion),
               ),
-
             const SizedBox(height: 14),
-
             if (!esManual)
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
@@ -582,8 +533,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline_rounded,
-                        size: 18, color: colorScheme.onSurfaceVariant),
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 18,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -607,6 +561,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final vm = context.watch<TransactionsViewModel>();
+    final profileVm = context.watch<ProfileViewModel>();
+    final profile = profileVm.profile;
+    final imageProvider =
+        (profile?.avatarPath != null && profile!.avatarPath.isNotEmpty)
+            ? AssetImage(profile.avatarPath) as ImageProvider
+            : null;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -636,24 +597,21 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             arguments: widget.user,
                           ),
                         ),
-
-                        // Panel de Filtros: Fila 1 (Dropdowns Cliente y Tipo) + Fila 2 (Rango Fechas)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8.0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              // Fila 1: Cliente y Tipo
                               Row(
                                 children: [
-                                  // Selector de Cliente
                                   Expanded(
                                     child: DropdownButtonFormField<String?>(
                                       isExpanded: true,
-                                      // Enlace reactivo a initialValue con validación defensiva de existencia en la lista
-                                      initialValue: (_filtroClienteId == null ||
-                                              _clientesDisponibles.any((c) => c.id == _filtroClienteId))
-                                          ? _filtroClienteId
+                                      initialValue: (vm.filtroClienteId == null ||
+                                              vm.clientesDisponibles.any(
+                                                (c) => c.id == vm.filtroClienteId,
+                                              ))
+                                          ? vm.filtroClienteId
                                           : null,
                                       decoration: InputDecoration(
                                         labelText: 'Cliente',
@@ -683,7 +641,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                             style: TextStyle(fontSize: 13),
                                           ),
                                         ),
-                                        ..._clientesDisponibles.map(
+                                        ...vm.clientesDisponibles.map(
                                           (c) => DropdownMenuItem<String?>(
                                             value: c.id,
                                             child: Text(
@@ -695,17 +653,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                           ),
                                         ),
                                       ],
-                                      onChanged: (val) =>
-                                          setState(() => _filtroClienteId = val),
+                                      onChanged: vm.setFiltroCliente,
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  // Selector de Tipo
                                   Expanded(
                                     child: DropdownButtonFormField<TransactionType?>(
                                       isExpanded: true,
-                                      // Enlace reactivo directo a initialValue
-                                      initialValue: _filtroTipo,
+                                      initialValue: vm.filtroTipo,
                                       decoration: InputDecoration(
                                         labelText: 'Tipo',
                                         isDense: true,
@@ -762,22 +717,18 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                           ),
                                         ),
                                       ],
-                                      onChanged: (val) =>
-                                          setState(() => _filtroTipo = val),
+                                      onChanged: vm.setFiltroTipo,
                                     ),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 8),
-
-                              // Fila 2: Rango de Fechas (Desde / Hasta) y botón restablecer
                               Row(
                                 children: [
-                                  // Fecha Desde
                                   Expanded(
                                     child: InkWell(
                                       onTap: () =>
-                                          _seleccionarFechaInicial(context),
+                                          _seleccionarFechaInicial(context, vm),
                                       borderRadius: BorderRadius.circular(12),
                                       child: InputDecorator(
                                         decoration: InputDecoration(
@@ -800,7 +751,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                           fillColor: colorScheme.surface,
                                         ),
                                         child: Text(
-                                          _formatearFecha(_fechaInicial),
+                                          _formatearFecha(vm.fechaInicial),
                                           style: TextStyle(
                                             fontSize: 12,
                                             color: colorScheme.onSurface,
@@ -811,11 +762,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  // Fecha Hasta
                                   Expanded(
                                     child: InkWell(
                                       onTap: () =>
-                                          _seleccionarFechaFinal(context),
+                                          _seleccionarFechaFinal(context, vm),
                                       borderRadius: BorderRadius.circular(12),
                                       child: InputDecorator(
                                         decoration: InputDecoration(
@@ -838,7 +788,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                           fillColor: colorScheme.surface,
                                         ),
                                         child: Text(
-                                          _formatearFecha(_fechaFinal),
+                                          _formatearFecha(vm.fechaFinal),
                                           style: TextStyle(
                                             fontSize: 12,
                                             color: colorScheme.onSurface,
@@ -849,14 +799,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  // Botón restablecer al mes actual
                                   IconButton(
                                     tooltip: 'Restablecer al mes actual',
                                     icon: const Icon(
                                       Icons.restart_alt_rounded,
                                       size: 20,
                                     ),
-                                    onPressed: _restablecerMesActual,
+                                    onPressed: vm.restablecerMesActual,
                                     visualDensity: VisualDensity.compact,
                                     style: IconButton.styleFrom(
                                       backgroundColor: colorScheme
@@ -872,169 +821,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             ],
                           ),
                         ),
-
                         Expanded(
-                          child: FutureBuilder<List<Transaction>>(
-                            future: _transaccionesFuture,
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState ==
-                                  ConnectionState.waiting) {
-                                return const Center(
-                                  child: CircularProgressIndicator(),
-                                );
-                              }
-
-                              if (snapshot.hasError) {
-                                return Center(
-                                  child: Text(
-                                    'Error al cargar transacciones: ${snapshot.error}',
-                                    style: TextStyle(color: colorScheme.error),
-                                  ),
-                                );
-                              }
-
-                              final List<Transaction> todas =
-                                  snapshot.data ?? [];
-                              final List<Transaction> filtradas = todas.where((t) {
-                                final coincideCliente =
-                                    _filtroClienteId == null ||
-                                        t.clienteId == _filtroClienteId;
-                                final coincideTipo = _filtroTipo == null ||
-                                    t.tipo == _filtroTipo;
-
-                                // Comparación normalizada por fecha (inclusiva a nivel de día)
-                                final fechaTx = DateTime(
-                                  t.fecha.year,
-                                  t.fecha.month,
-                                  t.fecha.day,
-                                );
-                                final inicio = DateTime(
-                                  _fechaInicial.year,
-                                  _fechaInicial.month,
-                                  _fechaInicial.day,
-                                );
-                                final fin = DateTime(
-                                  _fechaFinal.year,
-                                  _fechaFinal.month,
-                                  _fechaFinal.day,
-                                );
-                                final coincideFecha =
-                                    !fechaTx.isBefore(inicio) &&
-                                        !fechaTx.isAfter(fin);
-
-                                return coincideCliente &&
-                                    coincideTipo &&
-                                    coincideFecha;
-                              }).toList();
-
-                              if (filtradas.isEmpty) {
-                                final bool hayFiltrosActivos =
-                                    _filtroClienteId != null ||
-                                        _filtroTipo != null ||
-                                        !_esMesActual();
-
-                                return Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.receipt_long_outlined,
-                                        size: 64,
-                                        color: colorScheme.primary
-                                            .withValues(alpha: 0.35),
-                                      ),
-                                      const SizedBox(height: 14),
-                                      Text(
-                                        hayFiltrosActivos
-                                            ? 'No se encontraron transacciones con los filtros seleccionados'
-                                            : 'No hay transacciones registradas',
-                                        style: theme.textTheme.titleMedium
-                                            ?.copyWith(
-                                          color: colorScheme.onSurfaceVariant,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }
-
-                              return ListView.builder(
-                                physics: const BouncingScrollPhysics(),
-                                padding: const EdgeInsets.only(bottom: 80.0),
-                                itemCount: filtradas.length,
-                                itemBuilder: (context, index) {
-                                  final tx = filtradas[index];
-                                  final esManual =
-                                      tx.tipo == TransactionType.recarga ||
-                                          tx.tipo == TransactionType.retiro;
-                                  final refInst = (tx.instrumentoId != null &&
-                                          tx.instrumentoId!.isNotEmpty)
-                                      ? ' • Inst: ${tx.instrumentoId}'
-                                      : '';
-
-                                  return AppListCard(
-                                    titulo: tx.clienteNombre.isNotEmpty
-                                        ? tx.clienteNombre
-                                        : 'Cliente no asignado',
-                                    subtitulo:
-                                        '${_formatearFecha(tx.fecha)}$refInst',
-                                    detalle: tx.observacion.isNotEmpty
-                                        ? tx.observacion
-                                        : null,
-                                    colorAcento: tx.tipo.colorSugerido,
-                                    iconoAvatar: tx.tipo.icono,
-                                    badge: AppBadge(
-                                      texto: tx.tipo.etiqueta,
-                                      color: tx.tipo.colorSugerido,
-                                    ),
-                                    pie: Align(
-                                      alignment: Alignment.centerRight,
-                                      child: FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        alignment: Alignment.centerRight,
-                                        child: Text(
-                                          '${tx.tipo.signo} ${_formatearMoneda(tx.valor)}',
-                                          style: TextStyle(
-                                            color: tx.tipo.esIngreso
-                                                ? Colors.green.shade800
-                                                : Colors.amber.shade900,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    onTap: () => _mostrarFichaDetalle(context, tx),
-                                    accionesSwipe: esManual
-                                        ? [
-                                            AppSwipeAction(
-                                              etiqueta: 'Editar',
-                                              icono: Icons.edit_outlined,
-                                              colorFondo: colorScheme.primary,
-                                              onTap: () =>
-                                                  _navegarEditarTransaccion(
-                                                context,
-                                                tx,
-                                              ),
-                                            ),
-                                            AppSwipeAction(
-                                              etiqueta: 'Eliminar',
-                                              icono: Icons.delete_outline_rounded,
-                                              colorFondo: colorScheme.error,
-                                              onTap: () =>
-                                                  _confirmarEliminarTransaccion(
-                                                context,
-                                                tx,
-                                              ),
-                                            ),
-                                          ]
-                                        : null,
-                                  );
-                                },
-                              );
-                            },
+                          child: _buildListaTransacciones(
+                            context,
+                            vm: vm,
+                            theme: theme,
+                            colorScheme: colorScheme,
                           ),
                         ),
                       ],
@@ -1045,20 +837,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             ),
             AppSidebarNavigation(
               anchoBarra: _anchoBarraBase,
-              insigniaFlotante: FutureBuilder<Profile>(
-                future: _profileFuture,
-                builder: (context, snapshot) {
-                  final profile = snapshot.data;
-                  final imageProvider =
-                      (profile?.avatarPath != null && profile!.avatarPath.isNotEmpty)
-                          ? AssetImage(profile.avatarPath) as ImageProvider
-                          : null;
-
-                  return AppFloatingProfileBadge(
-                    proveedorImagen: imageProvider,
-                    onTap: () => _mostrarMenuPerfil(context, profile),
-                  );
-                },
+              insigniaFlotante: AppFloatingProfileBadge(
+                proveedorImagen: imageProvider,
+                onTap: () => _mostrarMenuPerfil(context, profile),
               ),
               seccionPestanas: AppFolderTabBar(
                 items: _obtenerItemsPestanas(context),
@@ -1075,6 +856,117 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildListaTransacciones(
+    BuildContext context, {
+    required TransactionsViewModel vm,
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+  }) {
+    if (vm.isLoading && vm.transacciones.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (vm.errorMessage != null && vm.transacciones.isEmpty) {
+      return Center(
+        child: Text(
+          'Error al cargar transacciones: ${vm.errorMessage}',
+          style: TextStyle(color: colorScheme.error),
+        ),
+      );
+    }
+
+    final filtradas = vm.transaccionesFiltradas;
+
+    if (filtradas.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.receipt_long_outlined,
+              size: 64,
+              color: colorScheme.primary.withValues(alpha: 0.35),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              vm.hayFiltrosActivos
+                  ? 'No se encontraron transacciones con los filtros seleccionados'
+                  : 'No hay transacciones registradas',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 80.0),
+      itemCount: filtradas.length,
+      itemBuilder: (context, index) {
+        final tx = filtradas[index];
+        final esManual = tx.tipo == TransactionType.recarga ||
+            tx.tipo == TransactionType.retiro;
+        final refInst = (tx.instrumentoId != null &&
+                tx.instrumentoId!.isNotEmpty)
+            ? ' • Inst: ${tx.instrumentoId}'
+            : '';
+
+        return AppListCard(
+          titulo: tx.clienteNombre.isNotEmpty
+              ? tx.clienteNombre
+              : 'Cliente no asignado',
+          subtitulo: '${_formatearFecha(tx.fecha)}$refInst',
+          detalle: tx.observacion.isNotEmpty ? tx.observacion : null,
+          colorAcento: tx.tipo.colorSugerido,
+          iconoAvatar: tx.tipo.icono,
+          badge: AppBadge(
+            texto: tx.tipo.etiqueta,
+            color: tx.tipo.colorSugerido,
+          ),
+          pie: Align(
+            alignment: Alignment.centerRight,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Text(
+                '${tx.tipo.signo} ${_formatearMoneda(tx.valor)}',
+                style: TextStyle(
+                  color: tx.tipo.esIngreso
+                      ? Colors.green.shade800
+                      : Colors.amber.shade900,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+          onTap: () => _mostrarFichaDetalle(context, tx),
+          accionesSwipe: esManual
+              ? [
+                  AppSwipeAction(
+                    etiqueta: 'Editar',
+                    icono: Icons.edit_outlined,
+                    colorFondo: colorScheme.primary,
+                    onTap: () => _navegarEditarTransaccion(context, tx),
+                  ),
+                  AppSwipeAction(
+                    etiqueta: 'Eliminar',
+                    icono: Icons.delete_outline_rounded,
+                    colorFondo: colorScheme.error,
+                    onTap: () => _confirmarEliminarTransaccion(context, tx),
+                  ),
+                ]
+              : null,
+        );
+      },
     );
   }
 }

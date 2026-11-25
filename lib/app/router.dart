@@ -12,6 +12,8 @@ import 'package:koralis_app/features/instruments/presentation/instruments_screen
 import 'package:koralis_app/features/instruments/presentation/instrument_form_screen.dart';
 import 'package:koralis_app/features/transactions/presentation/transactions_screen.dart';
 import 'package:koralis_app/features/transactions/presentation/transaction_form_screen.dart';
+import 'package:koralis_app/features/transactions/presentation/viewmodels/transactions_view_model.dart';
+import 'package:koralis_app/features/transactions/presentation/viewmodels/transaction_form_view_model.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 
@@ -84,22 +86,35 @@ class AppRouter {
       case '/transactions':
         final user = settings.arguments as User;
         return MaterialPageRoute(
-          builder: (_) => TransactionsScreen(user: user),
+          builder: (_) => ChangeNotifierProvider<TransactionsViewModel>(
+            create: (_) => TransactionsViewModel(userId: user.id),
+            child: TransactionsScreen(user: user),
+          ),
         );
       case '/transaction_form':
         if (settings.arguments is TransactionFormArgs) {
           final args = settings.arguments as TransactionFormArgs;
           return MaterialPageRoute(
-            builder: (_) => TransactionFormScreen(
-              user: args.user,
-              transaction: args.transaction,
-              clienteIdPreseleccionado: args.clienteIdPreseleccionado,
+            builder: (_) => ChangeNotifierProvider<TransactionFormViewModel>(
+              create: (_) => TransactionFormViewModel(
+                userId: args.user.id,
+                transactionInicial: args.transaction,
+                clienteIdPreseleccionado: args.clienteIdPreseleccionado,
+              ),
+              child: TransactionFormScreen(
+                user: args.user,
+                transaction: args.transaction,
+                clienteIdPreseleccionado: args.clienteIdPreseleccionado,
+              ),
             ),
           );
         } else if (settings.arguments is User) {
           final user = settings.arguments as User;
           return MaterialPageRoute(
-            builder: (_) => TransactionFormScreen(user: user),
+            builder: (_) => ChangeNotifierProvider<TransactionFormViewModel>(
+              create: (_) => TransactionFormViewModel(userId: user.id),
+              child: TransactionFormScreen(user: user),
+            ),
           );
         }
         return MaterialPageRoute(builder: (_) => const LoginScreen());

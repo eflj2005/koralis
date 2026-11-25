@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:core/core.dart' hide Transaction;
+import 'package:provider/provider.dart';
 import 'package:koralis_app/features/auth/domain/entities/user.dart';
 import 'package:koralis_app/features/auth/presentation/widgets/forgot_password_form_sheet.dart';
-import 'package:koralis_app/features/clients/domain/entities/client.dart';
 import 'package:koralis_app/features/clients/domain/usecases/get_clients_usecase.dart';
-import 'package:koralis_app/features/clients/data/repositories/client_repository_impl.dart';
 import 'package:koralis_app/features/profile/domain/entities/profile.dart';
 import 'package:koralis_app/features/profile/domain/usecases/get_profile_usecase.dart';
-import 'package:koralis_app/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:koralis_app/features/profile/presentation/viewmodels/profile_view_model.dart';
 import '../domain/entities/transaction.dart';
 import '../domain/usecases/save_transaction_usecase.dart';
-import '../domain/repositories/transaction_repository.dart';
-import '../data/repositories/transaction_repository_impl.dart';
+import 'viewmodels/transaction_form_view_model.dart';
 
 /// Argumentos para la navegación hacia la pantalla de formulario de transacción.
 class TransactionFormArgs {
@@ -26,8 +24,8 @@ class TransactionFormArgs {
   });
 }
 
-/// Pantalla para la creación y edición de transacciones financieras.
-class TransactionFormScreen extends StatefulWidget {
+/// Pantalla para la creación y edición de transacciones financieras (arquitectura MVVM con `provider`).
+class TransactionFormScreen extends StatelessWidget {
   final User user;
   final Transaction? transaction;
   final String? clienteIdPreseleccionado;
@@ -45,92 +43,81 @@ class TransactionFormScreen extends StatefulWidget {
     this.getProfileUseCase,
   });
 
+  bool _tieneProvider<T>(BuildContext context) {
+    try {
+      Provider.of<T>(context, listen: false);
+      return true;
+    } on ProviderNotFoundException {
+      return false;
+    }
+  }
+
   @override
-  State<TransactionFormScreen> createState() => _TransactionFormScreenState();
+  Widget build(BuildContext context) {
+    final tieneFormVm = _tieneProvider<TransactionFormViewModel>(context);
+    final tieneProfileVm = _tieneProvider<ProfileViewModel>(context);
+
+    if (tieneFormVm && tieneProfileVm) {
+      return _TransactionFormView(user: user);
+    }
+
+    return MultiProvider(
+      providers: [
+        if (!tieneFormVm)
+          ChangeNotifierProvider<TransactionFormViewModel>(
+            create: (_) => TransactionFormViewModel(
+              userId: user.id,
+              transactionInicial: transaction,
+              clienteIdPreseleccionado: clienteIdPreseleccionado,
+              saveTransactionUseCase: saveTransactionUseCase,
+              getClientsUseCase: getClientsUseCase,
+            ),
+          ),
+        if (!tieneProfileVm)
+          ChangeNotifierProvider<ProfileViewModel>(
+            create: (_) => ProfileViewModel(
+              getProfileUseCase: getProfileUseCase,
+            ),
+          ),
+      ],
+      child: _TransactionFormView(user: user),
+    );
+  }
 }
 
-class _TransactionFormScreenState extends State<TransactionFormScreen> {
+class _TransactionFormView extends StatefulWidget {
+  final User user;
+
+  const _TransactionFormView({required this.user});
+
+  @override
+  State<_TransactionFormView> createState() => _TransactionFormViewState();
+}
+
+class _TransactionFormViewState extends State<_TransactionFormView> {
   static const double _anchoBarraBase = 58.0;
 
   final _formKey = GlobalKey<FormState>();
 
-  String? _clienteIdSeleccionado;
-  String? _clienteNombreSeleccionado;
-  late TransactionType _tipoSeleccionado;
-  late DateTime _fecha;
   late final TextEditingController _valorCtrl;
   late final TextEditingController _observacionCtrl;
-
-  bool _guardando = false;
-  bool _cargandoClientes = true;
-  List<Client> _clientesDisponibles = [];
-
-  late final SaveTransactionUseCase _saveTransactionUseCase;
-  late final GetClientsUseCase _getClientsUseCase;
-  late final GetProfileUseCase _getProfileUseCase;
-  Future<Profile>? _profileFuture;
-
-  bool get _esEdicion => widget.transaction != null;
-  bool get _esAutomatica =>
-      _esEdicion &&
-      (widget.transaction!.tipo == TransactionType.inversion ||
-          widget.transaction!.tipo == TransactionType.retorno);
 
   @override
   void initState() {
     super.initState();
-    final tx = widget.transaction;
-
-    _tipoSeleccionado = tx?.tipo ?? TransactionType.recarga;
-    _fecha = tx?.fecha ?? DateTime.now();
-    _clienteIdSeleccionado = tx?.clienteId ?? widget.clienteIdPreseleccionado;
-    _clienteNombreSeleccionado = tx?.clienteNombre;
+    final vm = context.read<TransactionFormViewModel>();
+    final tx = vm.transactionInicial;
 
     _valorCtrl = TextEditingController(
       text: tx != null ? tx.valor.toStringAsFixed(2) : '',
     );
     _observacionCtrl = TextEditingController(text: tx?.observacion ?? '');
 
-    TransactionRepository? txRepo;
-    TransactionRepository obtenerTxRepo() =>
-        txRepo ??= TransactionRepositoryImpl(userId: widget.user.id);
-
-    _saveTransactionUseCase = widget.saveTransactionUseCase ??
-        SaveTransactionUseCase(obtenerTxRepo());
-    _getClientsUseCase = widget.getClientsUseCase ??
-        GetClientsUseCase(ClientRepositoryImpl(userId: widget.user.id));
-    _getProfileUseCase =
-        widget.getProfileUseCase ?? GetProfileUseCase(ProfileRepositoryImpl());
-
-    _cargarInicial();
-  }
-
-  Future<void> _cargarInicial() async {
-    setState(() {
-      _profileFuture = _getProfileUseCase.execute(widget.user.id);
+    Future.microtask(() {
+      if (!mounted) return;
+      context.read<TransactionFormViewModel>().cargarClientes();
+      context.read<ProfileViewModel>().cargarPerfil(widget.user.id);
     });
-
-    try {
-      final clientes = await _getClientsUseCase.execute();
-      if (mounted) {
-        setState(() {
-          _clientesDisponibles = clientes;
-          _cargandoClientes = false;
-
-          if (_clienteIdSeleccionado != null &&
-              (_clienteNombreSeleccionado == null || _clienteNombreSeleccionado!.isEmpty)) {
-            final encontrado = clientes.where((c) => c.id == _clienteIdSeleccionado);
-            if (encontrado.isNotEmpty) {
-              _clienteNombreSeleccionado = encontrado.first.nombre;
-            }
-          }
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _cargandoClientes = false);
-      }
-    }
   }
 
   @override
@@ -156,24 +143,27 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     return '\$ $entero,${partes[1]}';
   }
 
-  Future<void> _seleccionarFecha(BuildContext context) async {
-    if (_esAutomatica) return;
+  Future<void> _seleccionarFecha(
+    BuildContext context,
+    TransactionFormViewModel vm,
+  ) async {
+    if (vm.esAutomatica) return;
     final DateTime? seleccionada = await showDatePicker(
       context: context,
-      initialDate: _fecha,
+      initialDate: vm.fecha,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
     );
 
-    if (seleccionada != null && seleccionada != _fecha) {
-      setState(() => _fecha = seleccionada);
+    if (seleccionada != null && seleccionada != vm.fecha) {
+      vm.seleccionarFecha(seleccionada);
     }
   }
 
-  void _guardarTransaccion() async {
+  Future<void> _guardarTransaccion(TransactionFormViewModel vm) async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_clienteIdSeleccionado == null || _clienteIdSeleccionado!.isEmpty) {
+    if (vm.clienteIdSeleccionado == null || vm.clienteIdSeleccionado!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Por favor selecciona un cliente')),
       );
@@ -189,28 +179,17 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       return;
     }
 
-    setState(() => _guardando = true);
-
     try {
-      final nuevaTx = Transaction(
-        id: widget.transaction?.id ?? '',
-        clienteId: _clienteIdSeleccionado!,
-        clienteNombre: _clienteNombreSeleccionado ?? '',
-        tipo: _tipoSeleccionado,
+      await vm.guardarTransaccion(
         valor: valor,
-        fecha: _fecha,
-        instrumentoId: widget.transaction?.instrumentoId,
-        observacion: _observacionCtrl.text.trim(),
-        fechaCreacion: widget.transaction?.fechaCreacion,
+        observacion: _observacionCtrl.text,
       );
-
-      await _saveTransactionUseCase.execute(nuevaTx);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _esEdicion
+              vm.esEdicion
                   ? 'Transacción actualizada correctamente'
                   : 'Transacción registrada con éxito',
             ),
@@ -221,7 +200,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _guardando = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error al guardar: $e'),
@@ -263,6 +241,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               ),
               onPressed: () {
                 Navigator.pop(dialogContext);
+                context.read<ProfileViewModel>().limpiar();
                 Navigator.pushNamedAndRemoveUntil(
                   context,
                   '/',
@@ -407,6 +386,13 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final vm = context.watch<TransactionFormViewModel>();
+    final profileVm = context.watch<ProfileViewModel>();
+    final profile = profileVm.profile;
+    final imageProvider =
+        (profile?.avatarPath != null && profile!.avatarPath.isNotEmpty)
+            ? AssetImage(profile.avatarPath) as ImageProvider
+            : null;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -424,7 +410,9 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         AppHeaderTitle(
-                          titulo: _esEdicion ? 'Detalle Transacción' : 'Nueva Transacción',
+                          titulo: vm.esEdicion
+                              ? 'Detalle Transacción'
+                              : 'Nueva Transacción',
                           onBack: () => Navigator.pop(context),
                         ),
                         Expanded(
@@ -436,7 +424,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  if (_esAutomatica) ...[
+                                  if (vm.esAutomatica) ...[
                                     Container(
                                       padding: const EdgeInsets.all(12),
                                       margin: const EdgeInsets.only(bottom: 16),
@@ -469,9 +457,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                       ),
                                     ),
                                   ],
-
-                                  // --- 1. Selector de Cliente ---
-                                  if (_cargandoClientes)
+                                  if (vm.cargandoClientes)
                                     const Padding(
                                       padding: EdgeInsets.symmetric(vertical: 16.0),
                                       child: Center(
@@ -485,9 +471,9 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                   else
                                     DropdownButtonFormField<String>(
                                       isExpanded: true,
-                                      // Se enlaza reactivamente a 'initialValue' garantizando que el ID seleccionado exista en la lista disponible
-                                      initialValue: _clientesDisponibles.any((c) => c.id == _clienteIdSeleccionado)
-                                          ? _clienteIdSeleccionado
+                                      initialValue: vm.clientesDisponibles.any(
+                                              (c) => c.id == vm.clienteIdSeleccionado)
+                                          ? vm.clienteIdSeleccionado
                                           : null,
                                       decoration: InputDecoration(
                                         labelText: 'Cliente *',
@@ -502,7 +488,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                         fillColor: colorScheme.surface,
                                         isDense: true,
                                       ),
-                                      items: _clientesDisponibles.map((c) {
+                                      items: vm.clientesDisponibles.map((c) {
                                         return DropdownMenuItem<String>(
                                           value: c.id,
                                           child: Text(
@@ -511,19 +497,9 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                           ),
                                         );
                                       }).toList(),
-                                      onChanged: _esAutomatica
+                                      onChanged: vm.esAutomatica
                                           ? null
-                                          : (val) {
-                                              setState(() {
-                                                _clienteIdSeleccionado = val;
-                                                // Búsqueda defensiva para evitar excepciones no controladas durante la interacción
-                                                final sel = _clientesDisponibles.cast<Client?>().firstWhere(
-                                                      (c) => c?.id == val,
-                                                      orElse: () => null,
-                                                    );
-                                                _clienteNombreSeleccionado = sel?.nombre;
-                                              });
-                                            },
+                                          : vm.seleccionarCliente,
                                       validator: (val) {
                                         if (val == null || val.isEmpty) {
                                           return 'Selecciona un cliente';
@@ -532,8 +508,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                       },
                                     ),
                                   const SizedBox(height: 16),
-
-                                  // --- 2. Selector de Tipo de Transacción ---
                                   Text(
                                     'Tipo de Transacción *',
                                     style: theme.textTheme.bodyMedium?.copyWith(
@@ -542,34 +516,33 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-
-                                  if (_esAutomatica)
+                                  if (vm.esAutomatica)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 14,
                                         vertical: 12,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: _tipoSeleccionado.colorSugerido
+                                        color: vm.tipoSeleccionado.colorSugerido
                                             .withValues(alpha: 0.14),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                          color: _tipoSeleccionado.colorSugerido
+                                          color: vm.tipoSeleccionado.colorSugerido
                                               .withValues(alpha: 0.4),
                                         ),
                                       ),
                                       child: Row(
                                         children: [
                                           Icon(
-                                            _tipoSeleccionado.icono,
-                                            color: _tipoSeleccionado.colorSugerido,
+                                            vm.tipoSeleccionado.icono,
+                                            color: vm.tipoSeleccionado.colorSugerido,
                                             size: 22,
                                           ),
                                           const SizedBox(width: 10),
                                           Text(
-                                            _tipoSeleccionado.etiqueta,
+                                            vm.tipoSeleccionado.etiqueta,
                                             style: TextStyle(
-                                              color: _tipoSeleccionado.colorSugerido,
+                                              color: vm.tipoSeleccionado.colorSugerido,
                                               fontWeight: FontWeight.bold,
                                               fontSize: 15,
                                             ),
@@ -582,6 +555,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                       children: [
                                         Expanded(
                                           child: _buildTarjetaTipoManual(
+                                            vm: vm,
                                             tipo: TransactionType.recarga,
                                             titulo: 'Recarga (+)',
                                             descripcion: 'Aumenta disponible',
@@ -590,6 +564,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                         const SizedBox(width: 12),
                                         Expanded(
                                           child: _buildTarjetaTipoManual(
+                                            vm: vm,
                                             tipo: TransactionType.retiro,
                                             titulo: 'Retiro (-)',
                                             descripcion: 'Disminuye disponible',
@@ -598,10 +573,8 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                       ],
                                     ),
                                   const SizedBox(height: 16),
-
-                                  // --- 3. Fecha ---
                                   InkWell(
-                                    onTap: () => _seleccionarFecha(context),
+                                    onTap: () => _seleccionarFecha(context, vm),
                                     borderRadius: BorderRadius.circular(12),
                                     child: InputDecorator(
                                       decoration: InputDecoration(
@@ -618,7 +591,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                         isDense: true,
                                       ),
                                       child: Text(
-                                        _formatearFecha(_fecha),
+                                        _formatearFecha(vm.fecha),
                                         style: TextStyle(
                                           color: colorScheme.onSurface,
                                           fontWeight: FontWeight.w500,
@@ -627,9 +600,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 16),
-
-                                  // --- 4. Valor Monetario ---
-                                  if (_esAutomatica)
+                                  if (vm.esAutomatica)
                                     InputDecorator(
                                       decoration: InputDecoration(
                                         labelText: 'Valor de la Transacción (\$)',
@@ -646,7 +617,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                         isDense: true,
                                       ),
                                       child: Text(
-                                        _formatearMoneda(widget.transaction!.valor),
+                                        _formatearMoneda(vm.transactionInicial!.valor),
                                         style: TextStyle(
                                           color: colorScheme.onSurface,
                                           fontWeight: FontWeight.bold,
@@ -677,10 +648,8 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                       },
                                     ),
                                   const SizedBox(height: 16),
-
-                                  // --- 5. Referencia Instrumento (informativa) ---
-                                  if (widget.transaction?.instrumentoId != null &&
-                                      widget.transaction!.instrumentoId!.isNotEmpty) ...[
+                                  if (vm.transactionInicial?.instrumentoId != null &&
+                                      vm.transactionInicial!.instrumentoId!.isNotEmpty) ...[
                                     InputDecorator(
                                       decoration: InputDecoration(
                                         labelText: 'Instrumento Referenciado',
@@ -697,7 +666,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                         isDense: true,
                                       ),
                                       child: Text(
-                                        widget.transaction!.instrumentoId!,
+                                        vm.transactionInicial!.instrumentoId!,
                                         style: TextStyle(
                                           color: colorScheme.onSurface,
                                           fontWeight: FontWeight.w600,
@@ -706,9 +675,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                     ),
                                     const SizedBox(height: 16),
                                   ],
-
-                                  // --- 6. Observación ---
-                                  if (_esAutomatica)
+                                  if (vm.esAutomatica)
                                     InputDecorator(
                                       decoration: InputDecoration(
                                         labelText: 'Observación',
@@ -742,18 +709,17 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                                       maxLines: 3,
                                     ),
                                   const SizedBox(height: 28),
-
-                                  // --- Botón de Guardar ---
-                                  if (!_esAutomatica)
+                                  if (!vm.esAutomatica)
                                     AppButton(
-                                      texto: _guardando
+                                      texto: vm.guardando
                                           ? 'Guardando...'
-                                          : (_esEdicion
+                                          : (vm.esEdicion
                                               ? 'Guardar Cambios'
                                               : 'Registrar Transacción'),
                                       icono: Icons.check_circle_outline_rounded,
-                                      onPressed:
-                                          _guardando ? null : _guardarTransaccion,
+                                      onPressed: vm.guardando
+                                          ? null
+                                          : () => _guardarTransaccion(vm),
                                     ),
                                 ],
                               ),
@@ -768,20 +734,9 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
             ),
             AppSidebarNavigation(
               anchoBarra: _anchoBarraBase,
-              insigniaFlotante: FutureBuilder<Profile>(
-                future: _profileFuture,
-                builder: (context, snapshot) {
-                  final profile = snapshot.data;
-                  final imageProvider =
-                      (profile?.avatarPath != null && profile!.avatarPath.isNotEmpty)
-                          ? AssetImage(profile.avatarPath) as ImageProvider
-                          : null;
-
-                  return AppFloatingProfileBadge(
-                    proveedorImagen: imageProvider,
-                    onTap: () => _mostrarMenuPerfil(context, profile),
-                  );
-                },
+              insigniaFlotante: AppFloatingProfileBadge(
+                proveedorImagen: imageProvider,
+                onTap: () => _mostrarMenuPerfil(context, profile),
               ),
               seccionPestanas: AppFolderTabBar(
                 items: _obtenerItemsPestanas(context),
@@ -802,17 +757,18 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   }
 
   Widget _buildTarjetaTipoManual({
+    required TransactionFormViewModel vm,
     required TransactionType tipo,
     required String titulo,
     required String descripcion,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final seleccionada = _tipoSeleccionado == tipo;
+    final seleccionada = vm.tipoSeleccionado == tipo;
     final colorAcento = tipo.colorSugerido;
 
     return InkWell(
-      onTap: () => setState(() => _tipoSeleccionado = tipo),
+      onTap: () => vm.seleccionarTipo(tipo),
       borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
